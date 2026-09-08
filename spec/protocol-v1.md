@@ -36,6 +36,7 @@ A node serves two surfaces and **neither carries everything**.
 | objects and files | — | yes |
 | backup | — | yes |
 | health, readiness, metrics | — | yes |
+| authentication | once per connection (3.4) | per request, or per session token (5.8) |
 
 **The choice is forced, not a preference.** HTTP answers are JSON, which carries
 six types; the store's value model has **seventeen**. An HTTP-only client would
@@ -49,6 +50,12 @@ So a conforming client uses both, and the mapping is fixed:
 - **statements and subscriptions → wire**, for type fidelity;
 - **objects, files, backup, health, readiness, metrics → HTTP**, because nothing
   else serves them.
+
+The authentication row is the one asymmetry a client author is likely to get
+wrong. A wire connection proves who it is once and keeps that identity; HTTP has
+no connection to keep it on, so a credential arrives with every request — and a
+client that sends a **password** each time pays a deliberately expensive hash
+each time. Section 5.8 is where that is fixed and it is not optional reading.
 
 A caller never picks a transport per call. The two connections stay separately
 configurable and separately reportable, because they are two ports: a firewall
@@ -766,10 +773,19 @@ remaining are an error, not something to ignore.
 
 ## 5. The HTTP surface
 
-**18 callable routes and 13 refusal behaviours.** Authentication is HTTP Basic and
-nothing else. A store with no users declared is **open** and runs anything; the
-first `DEFINE USER` closes it, and from then on a request without a credential is
-answered `401` with a `WWW-Authenticate: Basic realm="TessariDB"` header.
+**21 callable routes and 16 refusal behaviours.** Authentication is HTTP Basic
+**or a bearer token this node issued** — two schemes on one header, and §5.8 is
+where a client learns which to send when. A store with no users declared is
+**open** and runs anything; the first `DEFINE USER` closes it, and from then on a
+request without a credential is answered `401` with a
+`WWW-Authenticate: Basic realm="TessariDB"` header.
+
+**Read §5.8 before writing the client's request path.** Basic here is verified
+with Argon2id at the OWASP floor, which is deliberately expensive and is paid
+**per request** — a client that presents a password on every call spends more
+time proving who it is than the node spends answering. That is what the token is
+for, and a client that never opens a session is slower than this protocol
+intends by more than an order of magnitude.
 
 There is no TLS here either.
 
@@ -778,7 +794,12 @@ There is no TLS here either.
 `auth: open` means answered without a credential by design. `auth: session` means
 the request runs through a session — where **presenting no credential is not
 itself a refusal**; on an open store the statement runs, and the refusal, when
-there is one, comes from the statement's own permission check.
+there is one, comes from the statement's own permission check. A `session` route
+accepts **either** scheme: `Basic` or `Bearer` (§5.8).
+
+`auth: basic` is the third and narrowest: the route takes a name and password and
+**refuses a token**, because the whole point of the route is a second proof. Two
+routes are marked so, and neither is an oversight to be relaxed.
 
 | method | path | auth | success | media |
 |---|---|---|---|---|
@@ -787,6 +808,9 @@ there is one, comes from the statement's own permission check.
 | GET | `/metrics` | open | 200 | `text/plain; version=0.0.4` |
 | GET | `/backup` | session | 200 | octet-stream |
 | GET | `/backup?from=<u64>` | session | 200 | octet-stream |
+| POST | `/session` | basic | 200 | json — the token (§5.8) |
+| DELETE | `/session` | session | 200 | json |
+| POST | `/password` | basic | 200 | json |
 | POST | `/script` (plain body) | session | 200 | json |
 | POST | `/script` (JSON envelope) | session | 200 | json |
 | GET | `/watch` | session | 101 (upgrade) | — |
@@ -840,6 +864,14 @@ Notes a client implementer needs:
 - `POST /script` branches on `Content-Type` containing `application/json`: a JSON
   body is an envelope carrying a script and parameters; any other body **is** the
   script. The shape is decided by what the caller declares, never by sniffing.
+- **`POST /session` and `POST /password` take Basic only.** A token presented to
+  either is `401`. On `/session` that is what keeps a token's expiry meaningful —
+  a holder who could trade one token for another would roll it forward forever,
+  and the account would never come back under the control of whoever owns the
+  password. On `/password` it is what keeps a stolen token temporary rather than
+  a permanent takeover.
+- **`DELETE /session` is `session` and not `basic`**, because the thing it needs
+  is the token itself. It answers the same whether or not that token existed.
 
 ### 5.2 Refusals
 
@@ -855,6 +887,9 @@ Notes a client implementer needs:
 | `/watch` upgrade with no `Sec-WebSocket-Key` | 400 json |
 | no credential against a closed store, or one refused | 401 + `WWW-Authenticate` |
 | authenticated but not permitted (role, tenancy, grant) | 403 json |
+| a token presented to `POST /session` or `POST /password` | 401 json |
+| `POST /session` against a store with no users declared | 401 json |
+| `POST /session` when the node holds `MAX_SESSION_TOKENS` already | 503 json |
 | a script the parser refuses | 400 json |
 | a store-level conflict — retriable after a change | 409 json |
 | encoding or substrate failure | 500 json |
@@ -931,6 +966,24 @@ staged shutdown, where `/ready` reports `leaving` while `/health` still reports
 `ok` — and that window is the whole reason both exist. A supervisor reads
 *not ready* as **stop sending traffic here** and *not healthy* as **restart
 this**; a client that reports one for the other inverts an operational decision.
+
+**The session routes** answer these:
+
+```json
+{"token": "…64 hexadecimal characters…", "expires_in": 43200}  // POST /session, 200
+{"closed": true}                                               // DELETE /session, 200
+{"changed": true, "tokens_ended": true}                        // POST /password, 200
+```
+
+`expires_in` is **seconds from now**, not an instant, so a client needs no clock
+agreement with the node and no timezone. It is the node's own constant and a
+client **MUST** read it from the answer rather than hard-coding today's value —
+§5.8 says what the client should do with it.
+
+`tokens_ended` is always `true` and is stated rather than implied: a password
+change ends **every** token that user held, including the one the caller may be
+holding in another connection. A client that keeps a token across a password
+change will find it refused on the next request, and this field is the notice.
 
 **The object routes** answer these, and the distinctions matter more than the
 shapes do:
@@ -1378,6 +1431,115 @@ be compared without being sorted first.
 
 ---
 
+### 5.8 The session token
+
+A password is expensive to verify **on purpose**. This node hashes with Argon2id
+at the OWASP floor — `m=19456, t=2, p=1` — and that cost is paid on **every**
+request carrying `Authorization: Basic`, because HTTP has no connection to hang a
+session on and the header is all the node gets.
+
+So the token exists. `POST /session` spends the password once and hands back
+something cheap to check, and every session route in §5.1 accepts it in the same
+header:
+
+```
+Authorization: Bearer 3f1c…                (64 hexadecimal characters)
+```
+
+**A client SHOULD open a session and SHOULD NOT present a password per request.**
+This is the one performance instruction in this document, and it is here because
+getting it wrong is invisible: a client that presents Basic everywhere is
+correct, passes every test, and is slower than this protocol intends by more than
+an order of magnitude. A measured example on a real deployment: a navigation
+endpoint issuing seventeen statements took 2.5 seconds, of which about 99 % was
+re-verifying a password the caller already held.
+
+#### The exchange
+
+`POST /session` with `Authorization: Basic`, no body. On success, `200`:
+
+```json
+{"token": "…", "expires_in": 43200}
+```
+
+`DELETE /session` with `Authorization: Bearer` gives it back. It answers `200`
+`{"closed": true}` whether or not the node was holding that token — whether a
+token it never issued *exists* is not something the presenter is entitled to
+learn, and there is nothing a client does differently either way.
+
+#### The token itself
+
+**Opaque, and a client MUST treat it as opaque.** It is 32 bytes from the
+operating system's random source, written as lowercase hexadecimal: 64
+characters, always exactly 64. It encodes nothing — not the user, not the
+expiry, not the node — so a client that parses one is reading a random number.
+Its length is fixed rather than value-dependent, which is deliberate: a token
+whose length varied would leak a fact about its own bytes.
+
+A client **SHOULD** hold it with the same care as the password it replaces. It is
+a bearer credential in the literal sense — anything that has it is the user until
+it expires — and there is no TLS on this protocol, so it travels in the clear
+exactly as the password did.
+
+#### Lifetime, and the four ways it ends
+
+`expires_in` is seconds from the answer, currently 43 200 — twelve hours. A
+client **MUST** read the value from the answer rather than assuming this one.
+
+A token stops working when any of these happens, and a client cannot distinguish
+them, because all four answer `401`:
+
+1. it expires;
+2. `DELETE /session` gave it back;
+3. the user record changed at all — a password change, a role change, a
+   `DROP USER`. The token stands for the user **as they were** when it was cut,
+   and a node that honoured one after the record moved would be handing out
+   authority the current record no longer grants;
+4. the node restarted. The table is in memory and nothing survives a restart.
+
+**The correct client behaviour for all four is the same:** on `401` while holding
+a token, discard it, `POST /session` again with the password, and retry the
+request once. A client that cannot re-authenticate — because it was handed a
+token rather than a password — must surface the `401` to its caller rather than
+retrying, and should say so in its own documentation.
+
+#### What a token may not do
+
+- It may **not** be exchanged for another token. `POST /session` refuses a
+  `Bearer` with `401`. A holder able to roll one forward indefinitely would put
+  the account permanently out of reach of whoever owns the password.
+- It may **not** change a password. `POST /password` refuses a `Bearer` with
+  `401`, so a token that leaks is a temporary problem rather than a takeover.
+- It carries **no authority of its own**. It is proof that a password was checked
+  earlier, nothing more; every permission question is still answered by the
+  user's grants at the moment of the request.
+
+#### Two conditions a client must handle
+
+**An open store has no session to open.** A store with no `DEFINE USER` signs
+everybody in as nobody, and `POST /session` answers `401` saying so rather than
+minting a token. This is not a failure to retry: a token cut from the *absence*
+of a credential would still work after the first `DEFINE USER` closed the store,
+which is precisely what must not happen. A client meeting this should carry on
+without a token — on an open store there is nothing to prove and nothing to save.
+
+**A node holds a bounded number of tokens.** At `MAX_SESSION_TOKENS`
+(`MAX_CONNECTIONS` × 10, so 4 000 on a default build) `POST /session` answers
+`503`. Expired entries are swept when a token is issued rather than on a timer,
+so the ceiling is reached only by live sessions. `503` here is retriable, unlike
+the `401`s above, and a client **SHOULD** distinguish the two rather than
+treating every failure to open a session as fatal.
+
+#### Not on the wire protocol
+
+There is no token in section 3, and none is missing. A wire connection holds its
+session for as long as it is open, so the credential in the request body (§3.4)
+is verified once per connection and never again. The token exists because HTTP
+has no connection-scoped identity to hold one — it buys back on a stateless
+surface what the wire protocol has by construction.
+
+---
+
 ## 6. What is deliberately **not** part of this protocol
 
 Named so that absence reads as a decision rather than an omission, and so that no
@@ -1394,6 +1556,13 @@ client author reimplements something no client ever sees.
 - **Schema validation.** The catalog is on the server. A client that checks that a
   table exists, a field is indexed, or types match is making a claim that fails in
   production rather than in a test.
+- **Any token semantics beyond 5.8.** There is no refresh token, no scope, no
+  audience, no signature a client could verify offline, and no revocation list.
+  The token is a lookup key in one node's memory and nothing else. A client
+  author arriving from OAuth or JWT should read that as a deliberate floor rather
+  than a first version to be extended against: the moment a token carries claims,
+  a client starts trusting them, and the authority this surface grants is the
+  user's grants at the moment of the request.
 - **A second query language.** Statements are TessariQL. A query builder produces the
   grammar the server's own parser accepts, and that is proven by round-tripping
   built queries through that parser — not by inspection.
@@ -1446,6 +1615,12 @@ A conforming client:
     bits, and **MUST NOT** round-trip them through a decimal string.
 15. **MUST NOT** compile or validate a regex pattern before sending it.
 16. **MUST NOT** depend on the server's repository, in any language.
+17. **MUST** treat a session token as opaque (5.8), **MUST** read `expires_in`
+    from the answer rather than assuming a lifetime, and **MUST NOT** present a
+    token to `POST /session` or `POST /password`. A client offering the HTTP
+    surface **SHOULD** open a session rather than presenting a password per
+    request, and **MUST** distinguish the retriable `503` of a full token table
+    from the four `401`s that mean *sign in again*.
 
 Verification is against a **running node**, not a mock: a mock proves the client
 agrees with its author's belief about the protocol, which is the belief most
