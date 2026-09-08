@@ -313,6 +313,7 @@ The **access path** byte in a Records outcome names how the store found them:
 | 5 | `graph` |
 | 6 | `join` |
 | 7 | `materialised` |
+| 8 | `span` |
 | any other | `scan` |
 
 An unrecognised path reads as `scan`, which is the honest answer for a path this
@@ -1232,6 +1233,7 @@ exhaustively:
 | `approximate` | an approximate index answered it — see the note of the same name |
 | `graph` | adjacency answered it |
 | `join` | more than one source was combined |
+| `span` | a walk between two positions in the table's own keyspace answered it |
 | `materialised` | a materialised source answered it |
 
 **`plan`** is an object. `access` is always present and always equal to `path`.
