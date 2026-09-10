@@ -862,6 +862,37 @@ Notes a client implementer needs:
   A client does not check this — the catalog is the server's — but a client's
   documentation should say it, because the first attempt otherwise looks like a
   routing fault rather than a missing declaration.
+- **The bucket listing has a shape.** `GET /files/{ns}/{db}/{bucket}` answers
+
+  ```json
+  {"files": [{"path": "/a.txt", "size": 4, "updated": "…"}]}
+  ```
+
+  `files` is always present and is an array, empty for a bucket holding nothing.
+  Each element carries `path`, always, as the file's name rendered as a JSON
+  string. `size` and `updated` appear **only where the store recorded them**, in
+  that order, written by the §5.6 value rules like any other value — a file
+  missing one contributes the keys it has, and never a `null`, because absence
+  here says the store never recorded it rather than that it recorded nothing.
+
+  A client MUST tolerate an element carrying `path` alone, and MUST NOT read a
+  key this section does not name. Earlier builds answered a statement result
+  wrapped in a key, publishing the query plan that produced the listing and a
+  storage-level chunk count; those are gone, and a client that learned them from
+  a live node rather than from here was reading internals.
+
+  `HEAD` on the same path answers the length this body would have carried and no
+  body at all, like every other `HEAD` on this surface.
+- **Listing a name that is not a bucket is refused, and the status is not yet
+  fixed.** A name declared as a table, and a name nothing declared, are both
+  refused rather than answered `200` with `{"files":[]}` — a client MUST NOT read
+  an empty listing as "this bucket exists and is empty", and MUST NOT read a
+  refusal as an empty bucket. **This version does not specify which status the
+  refusal carries**: the server answers `400` today by falling to a catch-all
+  rather than by a decision, and pinning that here would make an accident binding
+  on every client in every language. A client SHOULD treat any non-`200` as
+  *cannot list this name* and MUST NOT branch on `400` against `404`. The choice
+  is open against the server.
 - `POST /script` branches on `Content-Type` containing `application/json`: a JSON
   body is an envelope carrying a script and parameters; any other body **is** the
   script. The shape is decided by what the caller declares, never by sniffing.
@@ -1663,17 +1694,17 @@ tests passing, and only the byte-level comparison caught it.
   open product decision, and it is a **version** decision rather than a quiet
   one, which is why clients are required to refuse unrecognised framing loudly.
 
-- **The bucket listing has no normative shape, and a client should not depend on
-  its current one.** `GET /files/{ns}/{db}/{bucket}` answers `200`, and what it
-  answers today is a statement result wrapped in a key — it carries the query
-  plan that produced it and a storage-level chunk count, neither of which a client
-  has any business reading. Section 5.4 deliberately does not write that down: a
-  shape specified here binds every client in every language, and this one would
-  bind them to an internal detail. The same route also answers `200` for a name
-  that is a **table** rather than a bucket, where `PUT`, `GET` and `DELETE` all
-  refuse — one route out of four disagreeing about what a bucket is. Both are open
-  against the server. A client may list a bucket once the shape is settled; until
-  then it is the one route on this surface with no contract.
+- **The bucket listing's refusal status is open; its shape is not.** Both halves
+  of what used to stand here have closed. The route no longer answers a statement
+  result wrapped in a key — the query plan and the chunk count are gone, and the
+  shape is written down in §5.4, so a client may list a bucket. The route no
+  longer answers `200` for a name that is a table either; it refuses, as the
+  other three routes against that same name always did. What is **still open** is
+  which status the refusal carries: `400` today, reached by a catch-all rather
+  than chosen, where `404` is the arguable answer for a name that is not there.
+  §5.4 therefore requires a client to treat any non-`200` as *cannot list this
+  name* and forbids branching on the two. Fixing the status is a server decision
+  and is not a quiet one, because a client that had branched on it would break.
 - **There is no geospatial predicate yet.** A geometry is a value the store
   carries; `INSIDE`, `INTERSECTS` and distance are not part of this version, and
   the access-path byte will gain no new value for them until they exist.
