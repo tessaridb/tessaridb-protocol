@@ -818,9 +818,9 @@ routes are marked so, and neither is an oversight to be relaxed.
 | PUT | `/files/{ns}/{db}/{bucket}/{path…}` | session | 201 | json |
 | POST | `/files/{ns}/{db}/{bucket}/{path…}` | session | 201 | json |
 | GET | `/files/{ns}/{db}/{bucket}/{path…}` | session | 200 / 404 | octet-stream |
-| GET | `/files/{ns}/{db}/{bucket}` | session | 200 | json (bucket listing) |
+| GET | `/files/{ns}/{db}/{bucket}` | session | 200 / 404 | json (bucket listing) |
 | HEAD | `/files/{ns}/{db}/{bucket}/{path…}` | session | 200 / 404 | octet-stream |
-| HEAD | `/files/{ns}/{db}/{bucket}` | session | 200 | json |
+| HEAD | `/files/{ns}/{db}/{bucket}` | session | 200 / 404 | json |
 | DELETE | `/files/{ns}/{db}/{bucket}/{path…}` | session | 204 | — (no body) |
 | GET | `/` | open | 200 | `text/html` — console, build-conditional |
 | GET | `/console.css` | open | 200 | `text/css` — build-conditional |
@@ -883,16 +883,27 @@ Notes a client implementer needs:
 
   `HEAD` on the same path answers the length this body would have carried and no
   body at all, like every other `HEAD` on this surface.
-- **Listing a name that is not a bucket is refused, and the status is not yet
-  fixed.** A name declared as a table, and a name nothing declared, are both
-  refused rather than answered `200` with `{"files":[]}` — a client MUST NOT read
-  an empty listing as "this bucket exists and is empty", and MUST NOT read a
-  refusal as an empty bucket. **This version does not specify which status the
-  refusal carries**: the server answers `400` today by falling to a catch-all
-  rather than by a decision, and pinning that here would make an accident binding
-  on every client in every language. A client SHOULD treat any non-`200` as
-  *cannot list this name* and MUST NOT branch on `400` against `404`. The choice
-  is open against the server.
+- **A name that is not a bucket is `404`, on all four `/files` routes.** A name
+  declared as something else, and a name nothing declared, are both `404` — never
+  `200` with `{"files":[]}`, so a client MUST NOT read an empty listing as "this
+  bucket exists and is empty". The two cases are not separated by status because
+  the server cannot always separate them either: listing asks one question and
+  gets one answer. They are separated by the **body**, which reads *"… is not a
+  bucket"* for a name declared as something else and *"no bucket named …"* for one
+  declared nowhere. **Which of the two sentences a given route returns is not
+  specified**, and a client MUST NOT parse either one — the routes resolve the
+  bucket by different means, so the wording follows whichever resolver reached the
+  answer first, and that is an implementation detail rather than a promise.
+  Surface the sentence; branch on the status.
+
+  `404` and not `400`, deliberately: a request for a bucket that is not there is
+  well-formed, and `400` would tell a client it wrote the request wrongly — the
+  one thing it did not do. So the whole `/files` surface reads one way, **`404`
+  means it is not here**, whether the missing part is the file or the bucket.
+
+  This version specifies the **bucket** segment only. What a `/files` request
+  answers when the namespace or the database is the missing one is not stated
+  here, and a client MUST NOT infer it from this rule.
 - `POST /script` branches on `Content-Type` containing `application/json`: a JSON
   body is an envelope carrying a script and parameters; any other body **is** the
   script. The shape is decided by what the caller declares, never by sniffing.
@@ -915,6 +926,7 @@ Notes a client implementer needs:
 | `/backup?` with any query that is not `from=<u64>` | 400 json |
 | a `/files/…` segment that is not `[A-Za-z0-9_]+` | 400 json |
 | PUT or DELETE on a bucket with no file path | 400 json |
+| any `/files/…` request naming a bucket that is not one | 404 json |
 | `/watch` without upgrade headers, or another websocket version | 426 json |
 | `/watch` upgrade with no `Sec-WebSocket-Key` | 400 json |
 | no credential against a closed store, or one refused | 401 + `WWW-Authenticate` |
@@ -1694,17 +1706,16 @@ tests passing, and only the byte-level comparison caught it.
   open product decision, and it is a **version** decision rather than a quiet
   one, which is why clients are required to refuse unrecognised framing loudly.
 
-- **The bucket listing's refusal status is open; its shape is not.** Both halves
-  of what used to stand here have closed. The route no longer answers a statement
-  result wrapped in a key — the query plan and the chunk count are gone, and the
-  shape is written down in §5.4, so a client may list a bucket. The route no
-  longer answers `200` for a name that is a table either; it refuses, as the
-  other three routes against that same name always did. What is **still open** is
-  which status the refusal carries: `400` today, reached by a catch-all rather
-  than chosen, where `404` is the arguable answer for a name that is not there.
-  §5.4 therefore requires a client to treat any non-`200` as *cannot list this
-  name* and forbids branching on the two. Fixing the status is a server decision
-  and is not a quiet one, because a client that had branched on it would break.
+- **The bucket listing is settled — shape, refusal and status — and this entry
+  records that it once was not.** The route used to answer a statement result
+  wrapped in a key, carrying the query plan and a chunk count; it used to answer
+  `200` for a name that was a table, so a caller concluded the bucket was empty
+  rather than absent; and its refusal then carried `400` because the server's
+  error map had no arm for it rather than because anyone chose one. §5.4 now
+  states the shape, and the refusal is `404` on all four `/files` routes. The
+  status was the last of the three to be decided and it is the one that would
+  have been quietly wrong the longest, because a refusal nobody specified is a
+  refusal every client guesses at differently.
 - **There is no geospatial predicate yet.** A geometry is a value the store
   carries; `INSIDE`, `INTERSECTS` and distance are not part of this version, and
   the access-path byte will gain no new value for them until they exist.
