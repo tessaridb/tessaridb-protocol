@@ -141,6 +141,23 @@ still.** Bumping begins when a client exists that a refusal is addressed to. The
 rule "the version moves when the layout moves" is right after release and is pure
 ceremony before it.
 
+**A new frame kind is `minor`, and the minor is what makes it safe.** An unknown
+frame kind closes the connection (3.3) — it is not skipped, because a frame has
+no outcome's length in front of it to skip by. So a new frame kind would be
+breaking if it could reach a peer that does not know it, and the minor is exactly
+what stops that: a node sends a frame kind only to a peer whose greeting carried
+a minor at or above the one that introduced it.
+
+This is the one thing the minor gates, and it cuts in a single direction. A node
+that learns a peer's minor is **older** withholds what that peer cannot read; it
+never refuses, and it never changes how it decodes. The obligation belongs to the
+**sender**, because the receiver has no way to discharge it.
+
+`minor = 1` introduces **`Elsewhere` (tag 13)**, and a node does not send it to a
+peer that greeted with `minor = 0`. Such a peer receives the refusal it would have
+received before the frame existed, which is a worse answer than the redirect and a
+better one than a frame it would have to treat as a broken stream.
+
 ---
 
 ## 3. The wire protocol
@@ -152,7 +169,7 @@ TCP. On connect, **both sides send** the greeting before anything else:
 ```
 "TESS"   4 bytes, ASCII, literally 0x54 0x45 0x53 0x53
 major    1 byte, currently 1
-minor    1 byte, currently 0
+minor    1 byte, currently 1
 ```
 
 Six bytes.
@@ -212,6 +229,18 @@ cannot be asked about after the fact by a client of a different build.
 | 3 | Refusal | node → client | 3.6 |
 | 4 | Subscribe | client → node | 3.7 |
 | 5 | Change | node → client | 3.8 |
+| 13 | Elsewhere | node → client | 3.12 |
+
+**Thirteen, and not six.** Tags 6 through 12 are taken by the link nodes use to
+talk to each other, which shares this one byte and is not part of the client
+protocol. A client never sends one and never receives one, and a node that
+receives a client frame on a peer connection — or the reverse — treats it as an
+unknown frame.
+
+The two sets are disjoint, and *disjoint* is the rule. That the client's tags
+happen to be low and contiguous is a description of the arrangement today and
+never the property being relied on: a conforming client checks the tag it was
+given against the kinds it knows, and never against a range.
 
 An **unknown frame kind closes the connection**. It is not skipped. A protocol
 that ignores what it does not understand is one where a version mismatch looks
@@ -582,6 +611,62 @@ failure sends the operator to the network, where there is nothing to find.
 the store and failed **there** must not be retried automatically: the client
 cannot know it was safe to repeat.
 
+**A redirect is not in this table, and that is the point.** See 3.12.
+
+---
+
+### 3.12 Elsewhere body — a redirect, which is not a failure
+
+Sent only by a node whose peer greeted with `minor ≥ 1` (2.3). Answers a request
+in place of `Answer` or `Refusal`, and means: *this node did not run your read,
+and the node that should is at this address.*
+
+```
+node         16 bytes — who to expect there
+epoch         u64, big-endian — the leadership that node last claimed
+settlement    1 byte — 1 settled, 2 transient
+endpoint      length-prefixed text (3.2) — the address to dial
+```
+
+The fixed-width fields come first so every offset before the address is known
+without reading anything.
+
+**Why a frame and not an error.** A redirect is an *instruction*. A client that
+handles failures correctly — logs them, retries a bounded number of times, gives
+up — handles an instruction encoded as one **incorrectly, every time, by
+construction**. So it is its own frame kind and never a refusal carrying a hint,
+and a conforming client must not surface it through the error path of 3.11.
+
+**A client may ignore it.** A minimal client that has no routing behaviour reports
+the redirect to its caller and stops; it must not silently return an empty answer.
+What it may not do is treat it as a transport failure and retry the same node.
+
+**`node` makes the redirect checkable.** An address alone cannot be: a client that
+dialled it and met a different node would have no way to notice. On arrival, a
+client that can compare identifies the node it reached against this field.
+
+**`epoch` dates it.** Undated, a client that followed a redirect written under an
+older leadership would arrive, be redirected again, and have no way to tell a loop
+from progress. It is the leadership the **named** node last claimed, not the
+sending node's own — a node redirecting a read is frequently one that holds no
+leadership at all.
+
+**`settlement` is the difference between *this is where it lives* and *go here for
+this one read*.** `settled` (1) may be remembered and used to update a routing map.
+`transient` (2) **must not be**: it answers this request and nothing after it, and
+a client that remembered it would pin its map to an arrangement that was never
+meant to outlast the request. A redirect taken on how stale a copy is right now is
+always `transient`.
+
+A byte that is neither 1 nor 2 is **malformed**, not a third meaning. Zero is
+deliberately unassigned, because zero is what a truncated or zeroed buffer holds
+and giving it a meaning would let corruption decode as a value.
+
+**On the HTTP surface** the same answer is `307` carrying `Location` (section 5).
+`307` and not `302`, because only the temporary-redirect status promises that the
+method and the body survive the hop, and a script a client quietly dropped on the
+way to the other node is a worse outcome than a refusal.
+
 ---
 
 ## 4. Value encoding
@@ -937,9 +1022,21 @@ Notes a client implementer needs:
 | a script the parser refuses | 400 json |
 | a store-level conflict — retriable after a change | 409 json |
 | encoding or substrate failure | 500 json |
+| a read this node cannot answer within the staleness bound it was given, where a peer can | **307 + `Location`** json |
 
 `401` and `403` are different and a client must keep them apart: `401` means sign
 in, `403` means the grants do not cover this and signing in again will never help.
+
+**The `307` is in this table and is not a refusal.** It is here because this
+surface has one door for everything the store returns, and a reader looking for
+what `/script` can answer with would not find it anywhere else. `307` and not
+`302`, because only the temporary-redirect status promises that the method and
+the body survive the hop; not `301` or `308`, because both say *permanently* and
+a redirect taken on how stale a copy is right now is the least permanent fact
+this store holds. The body carries the same message the wire's `Refusal` would
+have, so a client that reads neither the status nor the header still learns
+something true — but the address is in `Location`, because a redirect whose
+target a client must parse out of prose is not a redirect. The wire form is 3.12.
 
 ### 5.3 Message framing
 
