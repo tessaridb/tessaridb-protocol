@@ -4,7 +4,7 @@
 
 # TessariDB protocol
 
-**The wire and HTTP protocols a [TessariDB](https://github.com/TessariDB/TessariDB)
+**The wire and HTTP protocols a [TessariDB](https://github.com/TessariDB/tessaridb)
 node speaks**, specified so that a client can be written in any language
 **without reading the server's source**.
 
