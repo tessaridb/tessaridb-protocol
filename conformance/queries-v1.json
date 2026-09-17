@@ -1,6 +1,6 @@
 {
   "contract_major": 1,
-  "contract_minor": 0,
+  "contract_minor": 1,
   "what_this_is": "Rendering vectors for the query builder contract in spec/query-builder-v1.md. A conforming builder renders each case's `build` to exactly its `script` with exactly its `parameters`, and refuses each case carrying `refused`.",
   "this_is_language_not_protocol": "Section 6 of protocol-v1.md puts the query language outside the protocol. This corpus sits beside the value corpus rather than inside it.",
   "needs_run_first": "A case carrying `needs` names statements that must be executed before it, in order, for it to have anything to act on — an UPDATE needs the record it changes. Offline rendering ignores them; a node run does not.",
@@ -707,6 +707,126 @@
         "reason": "not-a-name",
         "what": "a table",
         "name": "1memories"
+      }
+    },
+    {
+      "name": "select-with-a-staleness-bound",
+      "build": {
+        "select": {
+          "from": "memories",
+          "staleness": "30s"
+        }
+      },
+      "script": "SELECT * FROM memories STALENESS 30s;",
+      "parameters": {}
+    },
+    {
+      "name": "select-answered-by-the-leader",
+      "build": {
+        "select": {
+          "from": "memories",
+          "answered_by": "LEADER"
+        }
+      },
+      "script": "SELECT * FROM memories ANSWERED BY LEADER;",
+      "parameters": {}
+    },
+    {
+      "name": "select-answered-by-any",
+      "build": {
+        "select": {
+          "from": "memories",
+          "answered_by": "ANY"
+        }
+      },
+      "script": "SELECT * FROM memories ANSWERED BY ANY;",
+      "parameters": {}
+    },
+    {
+      "name": "select-with-both-and-staleness-first",
+      "build": {
+        "select": {
+          "from": "memories",
+          "staleness": "5m",
+          "answered_by": "LEADER"
+        }
+      },
+      "script": "SELECT * FROM memories STALENESS 5m ANSWERED BY LEADER;",
+      "parameters": {}
+    },
+    {
+      "name": "select-with-every-clause-in-order",
+      "build": {
+        "select": {
+          "from": "memories",
+          "fields": [
+            "body"
+          ],
+          "where": {
+            "compare": {
+              "field": "kind",
+              "op": "eq",
+              "value": {
+                "string": "note"
+              }
+            }
+          },
+          "order": [
+            [
+              "at",
+              "desc"
+            ]
+          ],
+          "start": 1,
+          "limit": 2,
+          "staleness": "1m30s",
+          "answered_by": "ANY"
+        }
+      },
+      "script": "SELECT body FROM memories WHERE kind = $p0 ORDER BY at DESC START 1 LIMIT 2 STALENESS 1m30s ANSWERED BY ANY;",
+      "parameters": {
+        "p0": {
+          "string": "note"
+        }
+      }
+    },
+    {
+      "name": "a-staleness-that-is-not-a-span-is-refused",
+      "build": {
+        "select": {
+          "from": "memories",
+          "staleness": "1 minute"
+        }
+      },
+      "refused": {
+        "reason": "not-a-span",
+        "name": "1 minute"
+      }
+    },
+    {
+      "name": "a-staleness-with-an-unknown-unit-is-refused",
+      "build": {
+        "select": {
+          "from": "memories",
+          "staleness": "1y"
+        }
+      },
+      "refused": {
+        "reason": "not-a-span",
+        "name": "1y"
+      }
+    },
+    {
+      "name": "an-answerer-that-is-not-one-of-the-two-is-refused",
+      "build": {
+        "select": {
+          "from": "memories",
+          "answered_by": "MASTER"
+        }
+      },
+      "refused": {
+        "reason": "not-an-answerer",
+        "name": "MASTER"
       }
     }
   ]

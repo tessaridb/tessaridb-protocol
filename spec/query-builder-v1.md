@@ -1,6 +1,13 @@
 # TessariDB query builder — rendering contract, version 1
 
-**Builder contract version 1.0.** Drafted 2026-09-01.
+**Builder contract version 1.1.** Drafted 2026-09-01; `1.1` on 2026-09-17.
+
+`1.1` adds two optional `SELECT` clauses, `STALENESS` and `ANSWERED BY` (§4.2),
+and the two refusal reasons that guard them (§5). It is a **minor** because it is
+purely additive: every `1.0` rendering is still exactly what `1.1` renders, and a
+`1.0` builder stays conforming for the statements it does offer. A node has
+accepted both clauses since `0.2.0-beta` and `0.3.0-beta` respectively — this
+document was the only thing stopping a builder from writing them.
 
 Status: **draft, authoritative for builders.**
 
@@ -124,10 +131,18 @@ SELECT <projection> FROM <table>
        [ WHERE <filter> ]
        [ ORDER BY <ordering> ]
        [ START <count> ]
-       [ LIMIT <count> ] ;
+       [ LIMIT <count> ]
+       [ STALENESS <span> ]
+       [ ANSWERED BY ( "ANY" / "LEADER" ) ] ;
 ```
 
 rendered on one line, each present clause preceded by one space.
+
+**The clause order is not a preference.** A node's parser accepts exactly this
+sequence and refuses any other — `STALENESS` after `LIMIT`, `ANSWERED BY` after
+`STALENESS` — with `expected ';' between statements`, which reads like a builder
+bug and is a grammar one. Measured against a node rather than read from a
+document.
 
 - **`<projection>`** is `*` when nothing is named; otherwise the named **items**
   in **the order they were named**, joined by `", "`. An item is either a field
@@ -232,6 +247,56 @@ corpus could not describe it.
 
 ---
 
+### 4.9 `STALENESS`
+
+```
+span   ::=  1*( 1*DIGIT unit )
+unit   ::=  "ns" / "us" / "ms" / "s" / "m" / "h" / "d" / "w"
+```
+
+Rendered as ` STALENESS ` followed by the span, **after `LIMIT`**.
+
+**A literal, never a parameter**, for the reason `START` and `LIMIT`'s counts
+are: a node refuses a parameter in this position outright. Taken from the node's
+own unit table rather than from a general idea of what a duration looks like —
+there are exactly eight units, all lowercase, no spaces, no decimal point, and a
+span may repeat them (`1m30s`). `1y` is not among them.
+
+**Because it is a literal it is the one place in this contract where a caller's
+text reaches the statement**, so a builder **MUST** check the span against the
+grammar above and refuse `not-a-span` otherwise. A builder that interpolated an
+unchecked string here would reopen, in one clause, the hole §2 closes everywhere
+else.
+
+**What a builder MUST NOT check is the VALUE.** A bound tighter than twice the
+cluster's awareness interval is refused by the node, and that floor is a property
+of the cluster the builder is not part of — a builder that guessed it would be
+wrong on some other cluster, and a caller told *too tight* by their client
+without being told the floor cannot write a statement that would be accepted.
+The node's refusal names the floor. Pass it through.
+
+### 4.10 `ANSWERED BY`
+
+```
+answerer  ::=  "ANY" / "LEADER"
+```
+
+Rendered as ` ANSWERED BY ` followed by the word, **after `STALENESS`** and last
+of all.
+
+Two words and no third. Where the language has an enumeration, a builder
+**SHOULD** take one, which makes the refusal below unreachable; where it does not,
+it **MUST** check the string and refuse `not-an-answerer`. The direction a guess
+would fail in is the unsafe one: somebody writing `MASTER` means the leader, and a
+builder that passed an unrecognised word through would have the read answered by
+whatever copy came first.
+
+**It is not a tighter `STALENESS`.** A follower at zero lag is *level*, not
+authoritative, so the two clauses are separate controls and both may appear on
+one statement — `STALENESS` first.
+
+---
+
 ## 5. Refusals
 
 A builder reports two refusal reasons, and they are the corpus's vocabulary:
@@ -240,6 +305,8 @@ A builder reports two refusal reasons, and they are the corpus's vocabulary:
 |---|---|
 | `not-a-name` | a table, field or other grammatical position was given a string that is not a name (§3) |
 | `incomplete` | a statement that cannot be rendered at all — a `CREATE` or `UPDATE` with no fields |
+| `not-a-span` | a `STALENESS` bound that is not a span (§4.9) |
+| `not-an-answerer` | an `ANSWERED BY` that is neither `ANY` nor `LEADER` (§4.10) |
 
 A refusal is returned to the caller. It is never a rendered statement that the
 node will refuse instead, because the caller is here now and the node is not.

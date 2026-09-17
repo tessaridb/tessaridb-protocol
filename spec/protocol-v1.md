@@ -1,6 +1,10 @@
 # TessariDB protocol — specification for client implementers
 
-**Protocol version 1.0.** Drafted 2026-08-24.
+**Protocol version 1.1.** Drafted 2026-08-24; `1.1` on 2026-09-14, when the
+redirect frame arrived. The header said `1.0` until 2026-09-17 while §2.3 and
+§3.3 already described `minor = 1` — a version sentence that disagrees with the
+document under it is worse than none, because a client implementer reads the
+first one.
 
 Status: **draft, authoritative.** This document is the source of truth for every
 client, in every language. A client is written from this document, not from the
