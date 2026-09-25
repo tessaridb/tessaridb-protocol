@@ -60,6 +60,51 @@ def checked(what, name):
     return name
 
 
+# --- §4.9 spans, §4.10 answerers ------------------------------------------------
+
+UNITS = ("ns", "us", "ms", "s", "m", "h", "d", "w")
+
+
+def is_span(text):
+    """§4.9: 1*( 1*DIGIT unit ), the node's own eight units, lowercase, no spaces.
+
+    The VALUE is never judged here. A bound tighter than the cluster's floor is
+    the node's refusal to make, and it names the floor; a builder that guessed it
+    would be wrong on the next cluster.
+    """
+    if not isinstance(text, str) or not text:
+        return False
+    rest = text
+    seen = False
+    while rest:
+        digits = 0
+        while digits < len(rest) and rest[digits] in DIGIT:
+            digits += 1
+        if digits == 0:
+            return False
+        rest = rest[digits:]
+        for unit in sorted(UNITS, key=len, reverse=True):
+            if rest.startswith(unit):
+                rest = rest[len(unit):]
+                seen = True
+                break
+        else:
+            return False
+    return seen
+
+
+def checked_span(text):
+    if not is_span(text):
+        raise Refused("not-a-span", name=text)
+    return text
+
+
+def checked_answerer(word):
+    if word not in ("ANY", "LEADER"):
+        raise Refused("not-an-answerer", name=word)
+    return word
+
+
 # --- §4.1 parameters ----------------------------------------------------------
 
 
@@ -170,6 +215,14 @@ def render_select(spec, binder):
         script += f" START {spec['start']}"
     if "limit" in spec:
         script += f" LIMIT {spec['limit']}"
+
+    # §4.9 and §4.10: both are literals, both come after LIMIT, and STALENESS
+    # comes before ANSWERED BY. The order is the node's, measured against its
+    # parser rather than chosen here: any other sequence is a parse error.
+    if "staleness" in spec:
+        script += f" STALENESS {checked_span(spec['staleness'])}"
+    if "answered_by" in spec:
+        script += f" ANSWERED BY {checked_answerer(spec['answered_by'])}"
 
     return script + ";"
 
@@ -379,6 +432,15 @@ CASES = [
     case("a-create-in-a-table-with-no-fields-is-refused", {"create_in_table": {"table": "memories", "set": {}}}),
     case("an-update-with-no-fields-is-refused", {"update_record": {"table": "memories", "id": TEXT("x"), "set": {}}}),
     case("a-delete-of-a-table-that-is-not-a-name-is-refused", {"delete_record": {"table": "1memories", "id": TEXT("x")}}),
+    # §4.9 / §4.10 — contract 1.1.
+    case("select-with-a-staleness-bound", {"select": {"from": "memories", "staleness": "30s"}}),
+    case("select-answered-by-the-leader", {"select": {"from": "memories", "answered_by": "LEADER"}}),
+    case("select-answered-by-any", {"select": {"from": "memories", "answered_by": "ANY"}}),
+    case("select-with-both-and-staleness-first", {"select": {"from": "memories", "staleness": "5m", "answered_by": "LEADER"}}),
+    case("select-with-every-clause-in-order", {"select": {"from": "memories", "fields": ["body"], "where": {"compare": {"field": "kind", "op": "eq", "value": TEXT("note")}}, "order": [("at", "desc")], "start": 1, "limit": 2, "staleness": "1m30s", "answered_by": "ANY"}}),
+    case("a-staleness-that-is-not-a-span-is-refused", {"select": {"from": "memories", "staleness": "1 minute"}}),
+    case("a-staleness-with-an-unknown-unit-is-refused", {"select": {"from": "memories", "staleness": "1y"}}),
+    case("an-answerer-that-is-not-one-of-the-two-is-refused", {"select": {"from": "memories", "answered_by": "MASTER"}}),
 ]
 
 
@@ -409,7 +471,7 @@ def build_corpus():
 
     return {
         "contract_major": 1,
-        "contract_minor": 0,
+        "contract_minor": 1,
         "what_this_is": (
             "Rendering vectors for the query builder contract in spec/query-builder-v1.md. "
             "A conforming builder renders each case's `build` to exactly its `script` with "

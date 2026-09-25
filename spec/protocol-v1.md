@@ -1,6 +1,10 @@
 # TessariDB protocol — specification for client implementers
 
-**Protocol version 1.0.** Drafted 2026-08-24.
+**Protocol version 1.1.** Drafted 2026-08-24; `1.1` on 2026-09-14, when the
+redirect frame arrived. The header said `1.0` until 2026-09-17 while §2.3 and
+§3.3 already described `minor = 1` — a version sentence that disagrees with the
+document under it is worse than none, because a client implementer reads the
+first one.
 
 Status: **draft, authoritative.** This document is the source of truth for every
 client, in every language. A client is written from this document, not from the
@@ -36,6 +40,7 @@ A node serves two surfaces and **neither carries everything**.
 | objects and files | — | yes |
 | backup | — | yes |
 | health, readiness, metrics | — | yes |
+| authentication | once per connection (3.4) | per request, or per session token (5.8) |
 
 **The choice is forced, not a preference.** HTTP answers are JSON, which carries
 six types; the store's value model has **seventeen**. An HTTP-only client would
@@ -49,6 +54,12 @@ So a conforming client uses both, and the mapping is fixed:
 - **statements and subscriptions → wire**, for type fidelity;
 - **objects, files, backup, health, readiness, metrics → HTTP**, because nothing
   else serves them.
+
+The authentication row is the one asymmetry a client author is likely to get
+wrong. A wire connection proves who it is once and keeps that identity; HTTP has
+no connection to keep it on, so a credential arrives with every request — and a
+client that sends a **password** each time pays a deliberately expensive hash
+each time. Section 5.8 is where that is fixed and it is not optional reading.
 
 A caller never picks a transport per call. The two connections stay separately
 configurable and separately reportable, because they are two ports: a firewall
@@ -134,6 +145,23 @@ still.** Bumping begins when a client exists that a refusal is addressed to. The
 rule "the version moves when the layout moves" is right after release and is pure
 ceremony before it.
 
+**A new frame kind is `minor`, and the minor is what makes it safe.** An unknown
+frame kind closes the connection (3.3) — it is not skipped, because a frame has
+no outcome's length in front of it to skip by. So a new frame kind would be
+breaking if it could reach a peer that does not know it, and the minor is exactly
+what stops that: a node sends a frame kind only to a peer whose greeting carried
+a minor at or above the one that introduced it.
+
+This is the one thing the minor gates, and it cuts in a single direction. A node
+that learns a peer's minor is **older** withholds what that peer cannot read; it
+never refuses, and it never changes how it decodes. The obligation belongs to the
+**sender**, because the receiver has no way to discharge it.
+
+`minor = 1` introduces **`Elsewhere` (tag 13)**, and a node does not send it to a
+peer that greeted with `minor = 0`. Such a peer receives the refusal it would have
+received before the frame existed, which is a worse answer than the redirect and a
+better one than a frame it would have to treat as a broken stream.
+
 ---
 
 ## 3. The wire protocol
@@ -145,7 +173,7 @@ TCP. On connect, **both sides send** the greeting before anything else:
 ```
 "TESS"   4 bytes, ASCII, literally 0x54 0x45 0x53 0x53
 major    1 byte, currently 1
-minor    1 byte, currently 0
+minor    1 byte, currently 1
 ```
 
 Six bytes.
@@ -205,6 +233,18 @@ cannot be asked about after the fact by a client of a different build.
 | 3 | Refusal | node → client | 3.6 |
 | 4 | Subscribe | client → node | 3.7 |
 | 5 | Change | node → client | 3.8 |
+| 13 | Elsewhere | node → client | 3.12 |
+
+**Thirteen, and not six.** Tags 6 through 12 and 14 through 16 are taken by the
+link nodes use to talk to each other, which shares this one byte and is not part
+of the client protocol. A client never sends one and never receives one, and a node that
+receives a client frame on a peer connection — or the reverse — treats it as an
+unknown frame.
+
+The two sets are disjoint, and *disjoint* is the rule. That the client's tags
+happen to be low and contiguous is a description of the arrangement today and
+never the property being relied on: a conforming client checks the tag it was
+given against the kinds it knows, and never against a range.
 
 An **unknown frame kind closes the connection**. It is not skipped. A protocol
 that ignores what it does not understand is one where a version mismatch looks
@@ -306,6 +346,7 @@ The **access path** byte in a Records outcome names how the store found them:
 | 5 | `graph` |
 | 6 | `join` |
 | 7 | `materialised` |
+| 8 | `span` |
 | any other | `scan` |
 
 An unrecognised path reads as `scan`, which is the honest answer for a path this
@@ -574,6 +615,62 @@ failure sends the operator to the network, where there is nothing to find.
 the store and failed **there** must not be retried automatically: the client
 cannot know it was safe to repeat.
 
+**A redirect is not in this table, and that is the point.** See 3.12.
+
+---
+
+### 3.12 Elsewhere body — a redirect, which is not a failure
+
+Sent only by a node whose peer greeted with `minor ≥ 1` (2.3). Answers a request
+in place of `Answer` or `Refusal`, and means: *this node did not run your read,
+and the node that should is at this address.*
+
+```
+node         16 bytes — who to expect there
+epoch         u64, big-endian — the leadership that node last claimed
+settlement    1 byte — 1 settled, 2 transient
+endpoint      length-prefixed text (3.2) — the address to dial
+```
+
+The fixed-width fields come first so every offset before the address is known
+without reading anything.
+
+**Why a frame and not an error.** A redirect is an *instruction*. A client that
+handles failures correctly — logs them, retries a bounded number of times, gives
+up — handles an instruction encoded as one **incorrectly, every time, by
+construction**. So it is its own frame kind and never a refusal carrying a hint,
+and a conforming client must not surface it through the error path of 3.11.
+
+**A client may ignore it.** A minimal client that has no routing behaviour reports
+the redirect to its caller and stops; it must not silently return an empty answer.
+What it may not do is treat it as a transport failure and retry the same node.
+
+**`node` makes the redirect checkable.** An address alone cannot be: a client that
+dialled it and met a different node would have no way to notice. On arrival, a
+client that can compare identifies the node it reached against this field.
+
+**`epoch` dates it.** Undated, a client that followed a redirect written under an
+older leadership would arrive, be redirected again, and have no way to tell a loop
+from progress. It is the leadership the **named** node last claimed, not the
+sending node's own — a node redirecting a read is frequently one that holds no
+leadership at all.
+
+**`settlement` is the difference between *this is where it lives* and *go here for
+this one read*.** `settled` (1) may be remembered and used to update a routing map.
+`transient` (2) **must not be**: it answers this request and nothing after it, and
+a client that remembered it would pin its map to an arrangement that was never
+meant to outlast the request. A redirect taken on how stale a copy is right now is
+always `transient`.
+
+A byte that is neither 1 nor 2 is **malformed**, not a third meaning. Zero is
+deliberately unassigned, because zero is what a truncated or zeroed buffer holds
+and giving it a meaning would let corruption decode as a value.
+
+**On the HTTP surface** the same answer is `307` carrying `Location` (section 5).
+`307` and not `302`, because only the temporary-redirect status promises that the
+method and the body survive the hop, and a script a client quietly dropped on the
+way to the other node is a worse outcome than a refusal.
+
 ---
 
 ## 4. Value encoding
@@ -766,10 +863,19 @@ remaining are an error, not something to ignore.
 
 ## 5. The HTTP surface
 
-**18 callable routes and 13 refusal behaviours.** Authentication is HTTP Basic and
-nothing else. A store with no users declared is **open** and runs anything; the
-first `DEFINE USER` closes it, and from then on a request without a credential is
-answered `401` with a `WWW-Authenticate: Basic realm="TessariDB"` header.
+**21 callable routes and 16 refusal behaviours.** Authentication is HTTP Basic
+**or a bearer token this node issued** — two schemes on one header, and §5.8 is
+where a client learns which to send when. A store with no users declared is
+**open** and runs anything; the first `DEFINE USER` closes it, and from then on a
+request without a credential is answered `401` with a
+`WWW-Authenticate: Basic realm="TessariDB"` header.
+
+**Read §5.8 before writing the client's request path.** Basic here is verified
+with Argon2id at the OWASP floor, which is deliberately expensive and is paid
+**per request** — a client that presents a password on every call spends more
+time proving who it is than the node spends answering. That is what the token is
+for, and a client that never opens a session is slower than this protocol
+intends by more than an order of magnitude.
 
 There is no TLS here either.
 
@@ -778,7 +884,12 @@ There is no TLS here either.
 `auth: open` means answered without a credential by design. `auth: session` means
 the request runs through a session — where **presenting no credential is not
 itself a refusal**; on an open store the statement runs, and the refusal, when
-there is one, comes from the statement's own permission check.
+there is one, comes from the statement's own permission check. A `session` route
+accepts **either** scheme: `Basic` or `Bearer` (§5.8).
+
+`auth: basic` is the third and narrowest: the route takes a name and password and
+**refuses a token**, because the whole point of the route is a second proof. Two
+routes are marked so, and neither is an oversight to be relaxed.
 
 | method | path | auth | success | media |
 |---|---|---|---|---|
@@ -787,15 +898,18 @@ there is one, comes from the statement's own permission check.
 | GET | `/metrics` | open | 200 | `text/plain; version=0.0.4` |
 | GET | `/backup` | session | 200 | octet-stream |
 | GET | `/backup?from=<u64>` | session | 200 | octet-stream |
+| POST | `/session` | basic | 200 | json — the token (§5.8) |
+| DELETE | `/session` | session | 200 | json |
+| POST | `/password` | basic | 200 | json |
 | POST | `/script` (plain body) | session | 200 | json |
 | POST | `/script` (JSON envelope) | session | 200 | json |
 | GET | `/watch` | session | 101 (upgrade) | — |
 | PUT | `/files/{ns}/{db}/{bucket}/{path…}` | session | 201 | json |
 | POST | `/files/{ns}/{db}/{bucket}/{path…}` | session | 201 | json |
 | GET | `/files/{ns}/{db}/{bucket}/{path…}` | session | 200 / 404 | octet-stream |
-| GET | `/files/{ns}/{db}/{bucket}` | session | 200 | json (bucket listing) |
+| GET | `/files/{ns}/{db}/{bucket}` | session | 200 / 404 | json (bucket listing) |
 | HEAD | `/files/{ns}/{db}/{bucket}/{path…}` | session | 200 / 404 | octet-stream |
-| HEAD | `/files/{ns}/{db}/{bucket}` | session | 200 | json |
+| HEAD | `/files/{ns}/{db}/{bucket}` | session | 200 / 404 | json |
 | DELETE | `/files/{ns}/{db}/{bucket}/{path…}` | session | 204 | — (no body) |
 | GET | `/` | open | 200 | `text/html` — console, build-conditional |
 | GET | `/console.css` | open | 200 | `text/css` — build-conditional |
@@ -837,9 +951,59 @@ Notes a client implementer needs:
   A client does not check this — the catalog is the server's — but a client's
   documentation should say it, because the first attempt otherwise looks like a
   routing fault rather than a missing declaration.
+- **The bucket listing has a shape.** `GET /files/{ns}/{db}/{bucket}` answers
+
+  ```json
+  {"files": [{"path": "/a.txt", "size": 4, "updated": "…"}]}
+  ```
+
+  `files` is always present and is an array, empty for a bucket holding nothing.
+  Each element carries `path`, always, as the file's name rendered as a JSON
+  string. `size` and `updated` appear **only where the store recorded them**, in
+  that order, written by the §5.6 value rules like any other value — a file
+  missing one contributes the keys it has, and never a `null`, because absence
+  here says the store never recorded it rather than that it recorded nothing.
+
+  A client MUST tolerate an element carrying `path` alone, and MUST NOT read a
+  key this section does not name. Earlier builds answered a statement result
+  wrapped in a key, publishing the query plan that produced the listing and a
+  storage-level chunk count; those are gone, and a client that learned them from
+  a live node rather than from here was reading internals.
+
+  `HEAD` on the same path answers the length this body would have carried and no
+  body at all, like every other `HEAD` on this surface.
+- **A name that is not a bucket is `404`, on all four `/files` routes.** A name
+  declared as something else, and a name nothing declared, are both `404` — never
+  `200` with `{"files":[]}`, so a client MUST NOT read an empty listing as "this
+  bucket exists and is empty". The two cases are not separated by status because
+  the server cannot always separate them either: listing asks one question and
+  gets one answer. They are separated by the **body**, which reads *"… is not a
+  bucket"* for a name declared as something else and *"no bucket named …"* for one
+  declared nowhere. **Which of the two sentences a given route returns is not
+  specified**, and a client MUST NOT parse either one — the routes resolve the
+  bucket by different means, so the wording follows whichever resolver reached the
+  answer first, and that is an implementation detail rather than a promise.
+  Surface the sentence; branch on the status.
+
+  `404` and not `400`, deliberately: a request for a bucket that is not there is
+  well-formed, and `400` would tell a client it wrote the request wrongly — the
+  one thing it did not do. So the whole `/files` surface reads one way, **`404`
+  means it is not here**, whether the missing part is the file or the bucket.
+
+  This version specifies the **bucket** segment only. What a `/files` request
+  answers when the namespace or the database is the missing one is not stated
+  here, and a client MUST NOT infer it from this rule.
 - `POST /script` branches on `Content-Type` containing `application/json`: a JSON
   body is an envelope carrying a script and parameters; any other body **is** the
   script. The shape is decided by what the caller declares, never by sniffing.
+- **`POST /session` and `POST /password` take Basic only.** A token presented to
+  either is `401`. On `/session` that is what keeps a token's expiry meaningful —
+  a holder who could trade one token for another would roll it forward forever,
+  and the account would never come back under the control of whoever owns the
+  password. On `/password` it is what keeps a stolen token temporary rather than
+  a permanent takeover.
+- **`DELETE /session` is `session` and not `basic`**, because the thing it needs
+  is the token itself. It answers the same whether or not that token existed.
 
 ### 5.2 Refusals
 
@@ -851,16 +1015,32 @@ Notes a client implementer needs:
 | `/backup?` with any query that is not `from=<u64>` | 400 json |
 | a `/files/…` segment that is not `[A-Za-z0-9_]+` | 400 json |
 | PUT or DELETE on a bucket with no file path | 400 json |
+| any `/files/…` request naming a bucket that is not one | 404 json |
 | `/watch` without upgrade headers, or another websocket version | 426 json |
 | `/watch` upgrade with no `Sec-WebSocket-Key` | 400 json |
 | no credential against a closed store, or one refused | 401 + `WWW-Authenticate` |
 | authenticated but not permitted (role, tenancy, grant) | 403 json |
+| a token presented to `POST /session` or `POST /password` | 401 json |
+| `POST /session` against a store with no users declared | 401 json |
+| `POST /session` when the node holds `MAX_SESSION_TOKENS` already | 503 json |
 | a script the parser refuses | 400 json |
 | a store-level conflict — retriable after a change | 409 json |
 | encoding or substrate failure | 500 json |
+| a read this node cannot answer within the staleness bound it was given, where a peer can | **307 + `Location`** json |
 
 `401` and `403` are different and a client must keep them apart: `401` means sign
 in, `403` means the grants do not cover this and signing in again will never help.
+
+**The `307` is in this table and is not a refusal.** It is here because this
+surface has one door for everything the store returns, and a reader looking for
+what `/script` can answer with would not find it anywhere else. `307` and not
+`302`, because only the temporary-redirect status promises that the method and
+the body survive the hop; not `301` or `308`, because both say *permanently* and
+a redirect taken on how stale a copy is right now is the least permanent fact
+this store holds. The body carries the same message the wire's `Refusal` would
+have, so a client that reads neither the status nor the header still learns
+something true — but the address is in `Location`, because a redirect whose
+target a client must parse out of prose is not a redirect. The wire form is 3.12.
 
 ### 5.3 Message framing
 
@@ -931,6 +1111,24 @@ staged shutdown, where `/ready` reports `leaving` while `/health` still reports
 `ok` — and that window is the whole reason both exist. A supervisor reads
 *not ready* as **stop sending traffic here** and *not healthy* as **restart
 this**; a client that reports one for the other inverts an operational decision.
+
+**The session routes** answer these:
+
+```json
+{"token": "…64 hexadecimal characters…", "expires_in": 43200}  // POST /session, 200
+{"closed": true}                                               // DELETE /session, 200
+{"changed": true, "tokens_ended": true}                        // POST /password, 200
+```
+
+`expires_in` is **seconds from now**, not an instant, so a client needs no clock
+agreement with the node and no timezone. It is the node's own constant and a
+client **MUST** read it from the answer rather than hard-coding today's value —
+§5.8 says what the client should do with it.
+
+`tokens_ended` is always `true` and is stated rather than implied: a password
+change ends **every** token that user held, including the one the caller may be
+holding in another connection. A client that keeps a token across a password
+change will find it refused on the next request, and this field is the notice.
 
 **The object routes** answer these, and the distinctions matter more than the
 shapes do:
@@ -1179,6 +1377,7 @@ exhaustively:
 | `approximate` | an approximate index answered it — see the note of the same name |
 | `graph` | adjacency answered it |
 | `join` | more than one source was combined |
+| `span` | a walk between two positions in the table's own keyspace answered it |
 | `materialised` | a materialised source answered it |
 
 **`plan`** is an object. `access` is always present and always equal to `path`.
@@ -1378,6 +1577,115 @@ be compared without being sorted first.
 
 ---
 
+### 5.8 The session token
+
+A password is expensive to verify **on purpose**. This node hashes with Argon2id
+at the OWASP floor — `m=19456, t=2, p=1` — and that cost is paid on **every**
+request carrying `Authorization: Basic`, because HTTP has no connection to hang a
+session on and the header is all the node gets.
+
+So the token exists. `POST /session` spends the password once and hands back
+something cheap to check, and every session route in §5.1 accepts it in the same
+header:
+
+```
+Authorization: Bearer 3f1c…                (64 hexadecimal characters)
+```
+
+**A client SHOULD open a session and SHOULD NOT present a password per request.**
+This is the one performance instruction in this document, and it is here because
+getting it wrong is invisible: a client that presents Basic everywhere is
+correct, passes every test, and is slower than this protocol intends by more than
+an order of magnitude. A measured example on a real deployment: a navigation
+endpoint issuing seventeen statements took 2.5 seconds, of which about 99 % was
+re-verifying a password the caller already held.
+
+#### The exchange
+
+`POST /session` with `Authorization: Basic`, no body. On success, `200`:
+
+```json
+{"token": "…", "expires_in": 43200}
+```
+
+`DELETE /session` with `Authorization: Bearer` gives it back. It answers `200`
+`{"closed": true}` whether or not the node was holding that token — whether a
+token it never issued *exists* is not something the presenter is entitled to
+learn, and there is nothing a client does differently either way.
+
+#### The token itself
+
+**Opaque, and a client MUST treat it as opaque.** It is 32 bytes from the
+operating system's random source, written as lowercase hexadecimal: 64
+characters, always exactly 64. It encodes nothing — not the user, not the
+expiry, not the node — so a client that parses one is reading a random number.
+Its length is fixed rather than value-dependent, which is deliberate: a token
+whose length varied would leak a fact about its own bytes.
+
+A client **SHOULD** hold it with the same care as the password it replaces. It is
+a bearer credential in the literal sense — anything that has it is the user until
+it expires — and there is no TLS on this protocol, so it travels in the clear
+exactly as the password did.
+
+#### Lifetime, and the four ways it ends
+
+`expires_in` is seconds from the answer, currently 43 200 — twelve hours. A
+client **MUST** read the value from the answer rather than assuming this one.
+
+A token stops working when any of these happens, and a client cannot distinguish
+them, because all four answer `401`:
+
+1. it expires;
+2. `DELETE /session` gave it back;
+3. the user record changed at all — a password change, a role change, a
+   `DROP USER`. The token stands for the user **as they were** when it was cut,
+   and a node that honoured one after the record moved would be handing out
+   authority the current record no longer grants;
+4. the node restarted. The table is in memory and nothing survives a restart.
+
+**The correct client behaviour for all four is the same:** on `401` while holding
+a token, discard it, `POST /session` again with the password, and retry the
+request once. A client that cannot re-authenticate — because it was handed a
+token rather than a password — must surface the `401` to its caller rather than
+retrying, and should say so in its own documentation.
+
+#### What a token may not do
+
+- It may **not** be exchanged for another token. `POST /session` refuses a
+  `Bearer` with `401`. A holder able to roll one forward indefinitely would put
+  the account permanently out of reach of whoever owns the password.
+- It may **not** change a password. `POST /password` refuses a `Bearer` with
+  `401`, so a token that leaks is a temporary problem rather than a takeover.
+- It carries **no authority of its own**. It is proof that a password was checked
+  earlier, nothing more; every permission question is still answered by the
+  user's grants at the moment of the request.
+
+#### Two conditions a client must handle
+
+**An open store has no session to open.** A store with no `DEFINE USER` signs
+everybody in as nobody, and `POST /session` answers `401` saying so rather than
+minting a token. This is not a failure to retry: a token cut from the *absence*
+of a credential would still work after the first `DEFINE USER` closed the store,
+which is precisely what must not happen. A client meeting this should carry on
+without a token — on an open store there is nothing to prove and nothing to save.
+
+**A node holds a bounded number of tokens.** At `MAX_SESSION_TOKENS`
+(`MAX_CONNECTIONS` × 10, so 4 000 on a default build) `POST /session` answers
+`503`. Expired entries are swept when a token is issued rather than on a timer,
+so the ceiling is reached only by live sessions. `503` here is retriable, unlike
+the `401`s above, and a client **SHOULD** distinguish the two rather than
+treating every failure to open a session as fatal.
+
+#### Not on the wire protocol
+
+There is no token in section 3, and none is missing. A wire connection holds its
+session for as long as it is open, so the credential in the request body (§3.4)
+is verified once per connection and never again. The token exists because HTTP
+has no connection-scoped identity to hold one — it buys back on a stateless
+surface what the wire protocol has by construction.
+
+---
+
 ## 6. What is deliberately **not** part of this protocol
 
 Named so that absence reads as a decision rather than an omission, and so that no
@@ -1394,6 +1702,13 @@ client author reimplements something no client ever sees.
 - **Schema validation.** The catalog is on the server. A client that checks that a
   table exists, a field is indexed, or types match is making a claim that fails in
   production rather than in a test.
+- **Any token semantics beyond 5.8.** There is no refresh token, no scope, no
+  audience, no signature a client could verify offline, and no revocation list.
+  The token is a lookup key in one node's memory and nothing else. A client
+  author arriving from OAuth or JWT should read that as a deliberate floor rather
+  than a first version to be extended against: the moment a token carries claims,
+  a client starts trusting them, and the authority this surface grants is the
+  user's grants at the moment of the request.
 - **A second query language.** Statements are TessariQL. A query builder produces the
   grammar the server's own parser accepts, and that is proven by round-tripping
   built queries through that parser — not by inspection.
@@ -1446,6 +1761,12 @@ A conforming client:
     bits, and **MUST NOT** round-trip them through a decimal string.
 15. **MUST NOT** compile or validate a regex pattern before sending it.
 16. **MUST NOT** depend on the server's repository, in any language.
+17. **MUST** treat a session token as opaque (5.8), **MUST** read `expires_in`
+    from the answer rather than assuming a lifetime, and **MUST NOT** present a
+    token to `POST /session` or `POST /password`. A client offering the HTTP
+    surface **SHOULD** open a session rather than presenting a password per
+    request, and **MUST** distinguish the retriable `503` of a full token table
+    from the four `401`s that mean *sign in again*.
 
 Verification is against a **running node**, not a mock: a mock proves the client
 agrees with its author's belief about the protocol, which is the belief most
@@ -1486,17 +1807,16 @@ tests passing, and only the byte-level comparison caught it.
   open product decision, and it is a **version** decision rather than a quiet
   one, which is why clients are required to refuse unrecognised framing loudly.
 
-- **The bucket listing has no normative shape, and a client should not depend on
-  its current one.** `GET /files/{ns}/{db}/{bucket}` answers `200`, and what it
-  answers today is a statement result wrapped in a key — it carries the query
-  plan that produced it and a storage-level chunk count, neither of which a client
-  has any business reading. Section 5.4 deliberately does not write that down: a
-  shape specified here binds every client in every language, and this one would
-  bind them to an internal detail. The same route also answers `200` for a name
-  that is a **table** rather than a bucket, where `PUT`, `GET` and `DELETE` all
-  refuse — one route out of four disagreeing about what a bucket is. Both are open
-  against the server. A client may list a bucket once the shape is settled; until
-  then it is the one route on this surface with no contract.
+- **The bucket listing is settled — shape, refusal and status — and this entry
+  records that it once was not.** The route used to answer a statement result
+  wrapped in a key, carrying the query plan and a chunk count; it used to answer
+  `200` for a name that was a table, so a caller concluded the bucket was empty
+  rather than absent; and its refusal then carried `400` because the server's
+  error map had no arm for it rather than because anyone chose one. §5.4 now
+  states the shape, and the refusal is `404` on all four `/files` routes. The
+  status was the last of the three to be decided and it is the one that would
+  have been quietly wrong the longest, because a refusal nobody specified is a
+  refusal every client guesses at differently.
 - **There is no geospatial predicate yet.** A geometry is a value the store
   carries; `INSIDE`, `INTERSECTS` and distance are not part of this version, and
   the access-path byte will gain no new value for them until they exist.

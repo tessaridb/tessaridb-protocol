@@ -4,14 +4,14 @@
 
 # TessariDB protocol
 
-**The wire and HTTP protocols a [TessariDB](https://github.com/TessariDB/TessariDB)
+**The wire and HTTP protocols a [TessariDB](https://github.com/tessaridb/tessaridb)
 node speaks**, specified so that a client can be written in any language
 **without reading the server's source**.
 
 [![status](https://img.shields.io/badge/status-in%20development-D98E33?style=flat-square)](#status)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-6B5FD1?style=flat-square)](LICENSE)
-[![version](https://img.shields.io/badge/protocol-v1.0-6B5FD1?style=flat-square)](spec/protocol-v1.md)
-[![corpus](https://img.shields.io/badge/corpus-54%20cases-6B5FD1?style=flat-square)](conformance)
+[![version](https://img.shields.io/badge/protocol-v1.1-6B5FD1?style=flat-square)](spec/protocol-v1.md)
+[![corpus](https://img.shields.io/badge/corpus-143%20cases-6B5FD1?style=flat-square)](conformance)
 
 </div>
 
@@ -49,12 +49,13 @@ So the specification comes first and lives on its own:
 
 | path | what it is |
 |---|---|
-| `spec/protocol-v1.md` | the normative specification of protocol version 1.0 |
-| `spec/query-builder-v1.md` | the rendering contract for a query builder — **language, not protocol**, and separate for that reason (§6) |
+| `spec/protocol-v1.md` | the normative specification of protocol version 1.1 |
+| `spec/query-builder-v1.md` | the rendering contract for a query builder, version 1.1 — **language, not protocol**, and separate for that reason (§6) |
 | `conformance/` | executable test vectors every client is checked against |
 | `conformance/values-v1.json` | the value codec, 54 vectors, both directions |
-| `conformance/queries-v1.json` | the query builder, 27 cases, rendering and refusals |
-| `conformance/README.md` | how to run both corpora against a client |
+| `conformance/queries-v1.json` | the query builder, 38 cases, rendering and refusals |
+| `conformance/json-v1.json` | the `POST /script` answer, 59 cases, decode only |
+| `conformance/README.md` | how to run the corpora against a client |
 
 ## The version, and what it promises
 
@@ -93,10 +94,18 @@ See `spec/protocol-v1.md` §2.2.
 **Stage: active development · draft, authoritative.**
 
 - ✅ **Settled:** the framing, the value codec, the outcome kinds, and the
-  54-case conformance corpus generated from this document.
+  143-case conformance corpus generated from this document across three files.
 - 🚧 **Owed:** verification of every vector against a running node.
 - ⚠️ **Moves:** the specification changes without notice while the database it
   describes is pre-1.0.
+
+The counts above are the lengths of the `cases` arrays in the three corpus files,
+read from the files rather than remembered. **Nothing checks them.**
+`scripts/test_conformance.sh` regenerates all three corpora and fails if a
+committed file differs from its generator — which catches a changed *vector* and
+not a stale *number in this README*. Two of these three were wrong until
+2026-09-08 for exactly that reason. Re-read them from the files when a generator
+changes.
 
 The corpus is generated from the specification alone by
 a second, independent implementation — which is what makes it evidence that the
