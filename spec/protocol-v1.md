@@ -235,9 +235,9 @@ cannot be asked about after the fact by a client of a different build.
 | 5 | Change | node → client | 3.8 |
 | 13 | Elsewhere | node → client | 3.12 |
 
-**Thirteen, and not six.** Tags 6 through 12 are taken by the link nodes use to
-talk to each other, which shares this one byte and is not part of the client
-protocol. A client never sends one and never receives one, and a node that
+**Thirteen, and not six.** Tags 6 through 12 and 14 through 16 are taken by the
+link nodes use to talk to each other, which shares this one byte and is not part
+of the client protocol. A client never sends one and never receives one, and a node that
 receives a client frame on a peer connection — or the reverse — treats it as an
 unknown frame.
 
