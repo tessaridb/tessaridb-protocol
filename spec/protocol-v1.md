@@ -379,6 +379,9 @@ refuses an unlisted kind is non-conforming by the paragraph above.
 | `compared-across-kinds` | a comparison held values of two different kinds |
 | `cursor-walked` | a paged read reached its anchor by walking rather than by seeking |
 | `subquery-ceiling` | an inner read hit its record ceiling, so the outer answer is built on a truncated one |
+| `nearing-ceiling` | a held read is close to the record ceiling past which it is refused rather than shortened |
+| `gathered` | shards of a split table were read from their leaders on other nodes, each when asked — complete, but not one snapshot |
+| `lapsed` | messages of a topic passed retention before this reader reached them, and will not be given to anyone |
 
 **The `only` flag sits after the notes and is the newest field.** It is `1` when
 the statement wrote `ONLY` — an assertion by its author that at most one record
@@ -526,9 +529,21 @@ u64     from — the first log position to read, INCLUSIVE
 u8      table flag: 0 = every table in the session's database, 1 = one table
         if 1:
 text      the table name
+text    cursor — OPTIONAL, and only ever last: where to resume a feed over a
+        split table
 ```
 
 Any other flag byte is malformed.
+
+**The cursor is the newest field and travels only when it is sent.** A body that
+ends after the table is the frame every earlier client sends, and it means what
+it always meant. A client that follows a **split** table — or a database holding
+one — resumes with the `cursor` the last change it handled carried (3.8), and
+the node then resumes *after* that change: unlike `from`, the cursor is not
+inclusive and needs no arithmetic. It is **opaque**: a client stores it and sends
+it back, and never builds or edits one. A node refuses a cursor it cannot read
+rather than guessing where it pointed. On a feed with no split table the cursor
+is never sent and `from` is the only position there is.
 
 **`from` is inclusive, and the arithmetic is the client's to own.** A subscriber
 stores the `sequence` of the last change it handled and resumes with **that plus
@@ -547,7 +562,18 @@ text    the record's identity, as the store spells it
 u8      what became of it: 0 = written, 1 = removed
         if 0:
 bytes     the new value, encoded per section 4
+text    cursor — OPTIONAL, and only ever last: on a feed over a split table,
+        where to resume after this change
 ```
+
+A split table's changes are written to more than one log, and each log counts
+its own positions, so on such a feed **no single `sequence` says where the feed
+was** — two changes may carry equal sequences from different logs. The node
+delivers them in the order it committed them and gives each one a `cursor`;
+that, not the sequence, is what a subscriber stores to resume from (3.7). A
+client MUST accept a change body with bytes after the value or the removed
+flag, and SHOULD expose them as the change's cursor; a client that treats them
+as malformed fails the first time anybody follows a split table.
 
 The `sequence` is shared by every change of one commit, which is what lets a
 subscriber apply them as the unit they were written as, and what it stores to
@@ -1409,8 +1435,9 @@ not, and the difference matters because they look alike in the same object.
 
 `kind` is a stable word a client may group on; `message` is a sentence for a
 person and **MUST NOT** be branched on — the same rule the refusal body follows
-in 5.4. Five kinds exist: `fell-back`, `approximate`, `compared-across-kinds`,
-`cursor-walked`, `subquery-ceiling`. A client **MUST** carry an unrecognised kind
+in 5.4. The kinds a node sends today are the ones listed in 3.5 — `fell-back`,
+`approximate`, `compared-across-kinds`, `cursor-walked`, `subquery-ceiling`,
+`nearing-ceiling`, `gathered` and `lapsed` — and the list is open. A client **MUST** carry an unrecognised kind
 through to its caller rather than dropping it, because a note it does not know is
 still the store reporting that the answer is qualified.
 
