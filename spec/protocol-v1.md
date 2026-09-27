@@ -885,6 +885,16 @@ compile comes back as a refusal (3.6) in the store's own words.
 After decoding one value from a payload, **the buffer must be exhausted**. Bytes
 remaining are an error, not something to ignore.
 
+### 4.9 Nesting depth
+
+A value nests at most **64 containers** deep — arrays, objects, sets, ranges and
+geometry collections inside one another, counted on the deepest path, so `1` is
+not nested and `[1]` is one level. A node refuses a payload nested deeper before
+it follows it, because every level is a stack frame and a request payload is read
+before anybody has signed in. An encoder **MUST NOT** send a deeper value, and a
+decoder **SHOULD** apply the same bound to what it reads rather than trusting the
+peer to have applied it. Since node `0.10.0-beta`.
+
 ---
 
 ## 5. The HTTP surface
@@ -1050,6 +1060,7 @@ Notes a client implementer needs:
 | `POST /session` against a store with no users declared | 401 json |
 | `POST /session` when the node holds `MAX_SESSION_TOKENS` already | 503 json |
 | a script the parser refuses | 400 json |
+| a request body larger than 16 MiB (16 777 216 bytes), before it is read when its length is declared — since node `0.10.0-beta` | 413 json |
 | a store-level conflict — retriable after a change | 409 json |
 | encoding or substrate failure | 500 json |
 | a read this node cannot answer within the staleness bound it was given, where a peer can | **307 + `Location`** json |
