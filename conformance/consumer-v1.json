@@ -1,0 +1,279 @@
+{
+  "contract_major": 1,
+  "contract_minor": 0,
+  "what_this_is": "Rendering vectors for the topic consumer contract in spec/consumer-v1.md. A conforming client renders each case's `build` to exactly its `script` with exactly its `parameters`, and refuses each case carrying `refused` before sending.",
+  "this_is_language_not_protocol": "Section 6 of protocol-v1.md puts the query language outside the protocol. This corpus sits beside the query corpus for the same reason.",
+  "run_it_against_a_node_too": "Rendering agreement is the offline half. Section 7 of the contract is the other: each client runs its consumer against a node built from the engine's dev branch.",
+  "generated_by": "generate_consumer.py",
+  "cases": [
+    {
+      "name": "read-a-batch",
+      "build": {
+        "read": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "limit": 10
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; READ FROM orders FOR CONSUMER 'mailer' LIMIT 10;",
+      "parameters": {}
+    },
+    {
+      "name": "read-one-at-a-time",
+      "build": {
+        "read": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "limit": 1
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; READ FROM orders FOR CONSUMER 'mailer' LIMIT 1;",
+      "parameters": {}
+    },
+    {
+      "name": "a-group-name-may-carry-dots-colons-and-dashes",
+      "build": {
+        "read": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "billing.v2:eu-west",
+          "limit": 10
+        }
+      },
+      "note": "The group is a string literal, so §3 allows more than an identifier does.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; READ FROM orders FOR CONSUMER 'billing.v2:eu-west' LIMIT 10;",
+      "parameters": {}
+    },
+    {
+      "name": "acknowledge-one-position",
+      "build": {
+        "ack": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "positions": [
+            7
+          ]
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; ACK orders FOR CONSUMER 'mailer' AT $p0;",
+      "parameters": {
+        "p0": {
+          "integer": "7"
+        }
+      }
+    },
+    {
+      "name": "acknowledge-several-positions-in-the-order-given",
+      "build": {
+        "ack": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "positions": [
+            9,
+            3,
+            12
+          ]
+        }
+      },
+      "note": "Positions are bound, never written into the text, and named from p0.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; ACK orders FOR CONSUMER 'mailer' AT $p0, $p1, $p2;",
+      "parameters": {
+        "p0": {
+          "integer": "9"
+        },
+        "p1": {
+          "integer": "3"
+        },
+        "p2": {
+          "integer": "12"
+        }
+      }
+    },
+    {
+      "name": "hand-back-at-once",
+      "build": {
+        "nack": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "positions": [
+            4
+          ]
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; NACK orders FOR CONSUMER 'mailer' AT $p0;",
+      "parameters": {
+        "p0": {
+          "integer": "4"
+        }
+      }
+    },
+    {
+      "name": "hand-back-with-no-delay-writes-no-delay-clause",
+      "build": {
+        "nack": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "positions": [
+            4
+          ],
+          "delay_ms": 0
+        }
+      },
+      "note": "A delay of nothing is no clause at all, not DELAY 0ms.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; NACK orders FOR CONSUMER 'mailer' AT $p0;",
+      "parameters": {
+        "p0": {
+          "integer": "4"
+        }
+      }
+    },
+    {
+      "name": "hand-back-after-a-delay",
+      "build": {
+        "nack": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "positions": [
+            4,
+            5
+          ],
+          "delay_ms": 1500
+        }
+      },
+      "note": "The delay is a duration literal the client formats from a number, in milliseconds.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; NACK orders FOR CONSUMER 'mailer' AT $p0, $p1 DELAY 1500ms;",
+      "parameters": {
+        "p0": {
+          "integer": "4"
+        },
+        "p1": {
+          "integer": "5"
+        }
+      }
+    },
+    {
+      "name": "a-topic-that-is-not-a-name-is-refused",
+      "build": {
+        "read": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders-v2",
+          "group": "mailer",
+          "limit": 10
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a topic",
+        "name": "orders-v2"
+      }
+    },
+    {
+      "name": "a-namespace-that-is-not-a-name-is-refused",
+      "build": {
+        "ack": {
+          "namespace": "1shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "mailer",
+          "positions": [
+            1
+          ]
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a namespace",
+        "name": "1shop"
+      }
+    },
+    {
+      "name": "a-database-that-is-not-a-name-is-refused",
+      "build": {
+        "nack": {
+          "namespace": "shop",
+          "database": "live db",
+          "topic": "orders",
+          "group": "mailer",
+          "positions": [
+            1
+          ]
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a database",
+        "name": "live db"
+      }
+    },
+    {
+      "name": "a-group-carrying-a-quote-is-refused-not-escaped",
+      "build": {
+        "read": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "o'brien",
+          "limit": 10
+        }
+      },
+      "note": "Refusing is the defence (§3); an escaped quote would be a client deciding what the node's lexer does.",
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a group",
+        "name": "o'brien"
+      }
+    },
+    {
+      "name": "an-empty-group-is-refused",
+      "build": {
+        "ack": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "",
+          "positions": [
+            1
+          ]
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a group",
+        "name": ""
+      }
+    },
+    {
+      "name": "a-group-longer-than-128-is-refused",
+      "build": {
+        "read": {
+          "namespace": "shop",
+          "database": "live",
+          "topic": "orders",
+          "group": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+          "limit": 10
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a group",
+        "name": "ggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+      }
+    }
+  ]
+}

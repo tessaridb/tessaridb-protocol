@@ -35,14 +35,14 @@ A client MAY offer a separate call that runs the `DEFINE GROUP` statement.
 ## 2. The statements a consumer sends
 
 Exactly these, rendered exactly so. `<topic>` is a name and `<group>` a quoted
-string (§3); `$p1 …` are bound parameters.
+string (§3); `$p0 …` are bound parameters, named from `p0` in the order the positions are given.
 
 | step | statement |
 |---|---|
 | select the tenancy | `USE NAMESPACE <ns>; USE DATABASE <db>;` — sent with every read, never once at start-up (§5) |
 | take messages | `READ FROM <topic> FOR CONSUMER '<group>' LIMIT <n>;` |
-| acknowledge | `ACK <topic> FOR CONSUMER '<group>' AT $p1[, $p2 …];` |
-| hand back | `NACK <topic> FOR CONSUMER '<group>' AT $p1[, $p2 …] [DELAY <d>];` |
+| acknowledge | `ACK <topic> FOR CONSUMER '<group>' AT $p0[, $p1 …];` |
+| hand back | `NACK <topic> FOR CONSUMER '<group>' AT $p0[, $p1 …] [DELAY <d>];` |
 
 A read answers records whose value is `{ position, value, deliveries }`.
 `position` is a whole number from 1; `deliveries` is how many times this message
@@ -128,4 +128,6 @@ Each client verifies its consumer against a running node built from the
 engine's `dev` branch, in both modes: auto hands every message of a small topic
 to the handler in order and leaves nothing in flight; manual hands an
 unacknowledged message out again after the deadline; a handler that fails once
-sees the same message again with `deliveries` one higher.
+sees the same message again with `deliveries` one higher. Offline, each client
+renders every case of `conformance/consumer-v1.json` through the same code its
+consumer sends, and refuses every case that carries `refused`.

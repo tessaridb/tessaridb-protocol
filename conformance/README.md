@@ -169,6 +169,15 @@ property the file has.
 Read the count from the file rather than from this paragraph: `gaps` is a JSON
 array and this sentence is prose that has already been wrong once.
 
+## The fourth corpus: `consumer-v1.json`
+
+The statements a topic consumer sends (`spec/consumer-v1.md` §2) and the names it
+refuses before sending (§3). Five clients compose these, and each one's live test
+only proves its own node accepts them; this corpus is what compares the five. A
+client renders each case's `build` — `read`, `ack` or `nack` over a namespace,
+database, topic and group — to exactly its `script` with exactly its `parameters`,
+and refuses each case carrying `refused` with the stated `reason`.
+
 ## Regenerating
 
 ```sh
@@ -180,6 +189,9 @@ python3 generate_queries.py --check             # exit 1 if the committed file d
 
 python3 generate_json.py > json-v1.json         # rewrite the JSON-rendering corpus
 python3 generate_json.py --check                # exit 1 if the committed file differs
+
+python3 generate_consumer.py > consumer-v1.json # rewrite the consumer corpus
+python3 generate_consumer.py --check            # exit 1 if the committed file differs
 ```
 
 `--check` is what stops the corpus and its generator from drifting apart, and it
