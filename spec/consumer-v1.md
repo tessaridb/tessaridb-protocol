@@ -68,18 +68,19 @@ consume(topic, group, handler, ack = auto | manual, batch = 10)
 
 1. Read with `LIMIT batch`.
 2. For each message, in the order answered, call `handler(message)`. A message
-   exposes `position`, `value`, `deliveries`, and — in manual mode — `ack()` and
-   `nack(delay?)`.
+   exposes `position`, `value` and `deliveries`.
 3. **auto**: when the handler returns normally, the client sends `ACK` for that
    message **before** calling the handler with the next one. When the handler
    raises or returns an error, the client sends `NACK` for that message (no
    delay) and continues with the next. Auto therefore means *acknowledge after
    processing*: at least once, never at most once.
-4. **manual**: the client sends nothing on the handler's behalf. `ack()` and
-   `nack()` send the statement and return the node's count; the handler may call
-   them later, from elsewhere, as long as the consumer is open. A message the
-   handler neither acknowledges nor hands back is handed out again when the
-   group's deadline passes — that is the design, not a leak.
+4. **manual**: the handler decides each message itself: acknowledge it, hand it
+   back (with an optional delay), or leave it. A client offers this either as a
+   value the handler returns (`Ack`, `Nack(delay?)`, `Leave`) — natural where a
+   callback returns a result — or as `ack()` / `nack(delay?)` methods on the
+   message; the statements sent are the same. `ack` and `nack` report the node's
+   count. A message left alone is handed out again when the group's deadline
+   passes — that is the design, not a leak.
 5. When a read answers no messages, wait and read again: 50 ms, doubling on each
    empty read to at most 1 s, and back to none after any read that answered
    something. A client MUST NOT spin.
