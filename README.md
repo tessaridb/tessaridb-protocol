@@ -56,6 +56,7 @@ So the specification comes first and lives on its own:
 | `conformance/values-v1.json` | the value codec, 54 vectors, both directions |
 | `conformance/queries-v1.json` | the query builder, 38 cases, rendering and refusals |
 | `conformance/json-v1.json` | the `POST /script` answer, 59 cases, decode only |
+| `conformance/consumer-v1.json` | the topic consumer's statements, 14 cases, rendering and refusals |
 | `conformance/README.md` | how to run the corpora against a client |
 
 ## The version, and what it promises
@@ -129,8 +130,8 @@ which is strong but is not the same claim.
    If you also ship a query builder, read `spec/query-builder-v1.md` and run
    `queries-v1.json` — and, where you can reach a node, execute every rendered
    case against it, which is the only check that reaches the parser.
-   If you ship a topic consumer, read `spec/consumer-v1.md` and verify it against a
-   running node in both acknowledgement modes.
+   If you ship a topic consumer, read `spec/consumer-v1.md`, run `consumer-v1.json`,
+   and verify it against a running node in both acknowledgement modes.
 4. Where the document did not answer a question you had, open an issue here. That
    is the contribution that matters most — it is how the document stops being
    sufficient only for the person who wrote it.
