@@ -67,6 +67,11 @@ A client MUST refuse, before sending:
 
 A ttl is carried as the store's **duration** value (protocol §4), converted from the language's own duration type.
 
+**`keys` answers strings.** The wire spells each key in the language's own form (protocol §3.5, the keys outcome):
+a text key arrives quoted, `'user:1'`. A client turns a quoted key back into the string — drop the surrounding
+quotes, `\'` becomes `'` and `\\` becomes `\` — and returns any other kind of key (an integer id a script wrote)
+in its language form unchanged, because it is not a key this handle wrote.
+
 ## 3. `getOrSet`
 
 ```
@@ -84,9 +89,10 @@ cache entry with no expiry is not a cache entry.
 
 ## 4. The lease
 
-`lock` returns a lease carrying the key, the holder and the ttl. The holder defaults to **128 random bits in
-lowercase hex** from the language's cryptographic random source; a caller may pass its own (a worker name) when it
-needs to recognise the holder in the space.
+`lock` returns a lease carrying the key, the holder and the ttl. The holder defaults to **128 bits in lowercase
+hex, unique to the lease** — random where the language's standard library offers randomness, and otherwise derived
+from the process's own entropy and a counter. Uniqueness is what matters, not secrecy: anybody who can read the
+space can read the holder. A caller may pass its own (a worker name) when it needs to recognise the holder.
 
 - A lease is **not a mutex**. Past its ttl another holder may take it and neither is told. Work that must not run
   twice extends before the ttl passes (and stops when `extend` answers `false`), or is made safe to run twice.
