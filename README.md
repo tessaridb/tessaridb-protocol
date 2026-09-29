@@ -52,6 +52,7 @@ So the specification comes first and lives on its own:
 | `spec/protocol-v1.md` | the normative specification of protocol version 1.1 |
 | `spec/query-builder-v1.md` | the rendering contract for a query builder, version 1.1 — **language, not protocol**, and separate for that reason (§6) |
 | `spec/consumer-v1.md` | the contract for consuming a topic with a callback as a member of a consumer group — the statements sent, auto and manual acknowledgement, waiting, refusals; **language, not protocol** |
+| `spec/cache-v1.md` | the contract for a space used as a cache, a counter and a lock — the statements each call sends, `getOrSet`, the lease; **language, not protocol** |
 | `conformance/` | executable test vectors every client is checked against |
 | `conformance/values-v1.json` | the value codec, 54 vectors, both directions |
 | `conformance/queries-v1.json` | the query builder, 38 cases, rendering and refusals |
