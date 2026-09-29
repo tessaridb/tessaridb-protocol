@@ -991,6 +991,8 @@ routes are marked so, and neither is an oversight to be relaxed.
 | HEAD | `/files/{ns}/{db}/{bucket}` | session | 200 / 404 | json |
 | DELETE | `/files/{ns}/{db}/{bucket}/{path…}` | session | 204 | — (no body) |
 | POST | `/series/{ns}/{db}/{series}` | session | 200 | json — `{"appended":n}` (§5.9), since node `0.14.0-beta` |
+| GET PUT DELETE POST | `/kv/{ns}/{db}/{space}/{op}/{key…}` | session | 200 / 404 | json (§5.10), since node `0.15.0-beta` |
+| GET | `/kv/{ns}/{db}/{space}` | session | 200 | json — a key listing (§5.10) |
 | GET | `/` | open | 200 | `text/html` — console, build-conditional |
 | GET | `/console.css` | open | 200 | `text/css` — build-conditional |
 | GET | `/console.js` | open | 200 | `text/javascript` — build-conditional |
@@ -1099,6 +1101,9 @@ Notes a client implementer needs:
 | any `/files/…` request naming a bucket that is not one | 404 json |
 | a `/series/…` segment that is not `[A-Za-z0-9_]+`, or a body that is not one array of objects of literals (§5.9) | 400 json |
 | a `/series/…` request naming a table that is not a series, or none | 404 json |
+| a `/kv/…` segment that is not a name, a bad `expire`/`if`/`by`/`limit`/`holder`, or a body that is not one value | 400 json |
+| a `/kv/…` request naming a table that is not a space, an unknown operation, or a key that is not there (`GET …/key`) | 404 json |
+| a `/kv/…` operation given the wrong method | 405 json |
 | `/watch` without upgrade headers, or another websocket version | 426 json |
 | `/watch` upgrade with no `Sec-WebSocket-Key` | 400 json |
 | `/wire` on a node that does not serve the wire protocol | 404 json |
@@ -1823,6 +1828,40 @@ client before sending rather than approximated:
 Every spelling here was read back through the node's own parser on `dev`
 `585bbe2` (2026-09-30); a client's live test is the check that its renderer
 still agrees.
+
+### 5.10 `/kv/{ns}/{db}/{space}/{op}/{key…}` — a space as a cache, a counter and a lock
+
+Since node `0.15.0-beta`. Each route is **one space statement** run through the caller's own session — the same
+grants, tenancy and refusals a script meets. `{ns}`, `{db}` and `{space}` are names (`[A-Za-z0-9_]+`, a `400`
+otherwise); the **key is the percent-decoded rest of the path** and is bound, never interpolated. The operation is a
+fixed segment **before** the key, so a key containing `/incr` is still a key.
+
+| method | path | query | body | answers `200` with |
+|---|---|---|---|---|
+| GET | `…/key/{key}` | — | — | `{"value": v, "ttl": "29s991ms" \| null}` — `null` is *never expires*; `404` when there is no key |
+| PUT | `…/key/{key}` | `expire`, `if=absent\|present` | one TessariQL value | `{"written": bool}` |
+| DELETE | `…/key/{key}` | — | — | `{"deleted": bool}` — whether there was a key (one holding `NULL` is one) |
+| POST | `…/swap/{key}` | `expire` | `{ expect: v0, value: v1 }` | `{"written": bool}` |
+| POST | `…/incr/{key}` | `by=<integer>` (default 1) | — | `{"value": n}` — a missing key counts from 0 |
+| POST | `…/expire/{key}` | `expire` (required) | — | `{"found": bool}` |
+| POST | `…/persist/{key}` | — | — | `{"found": bool}` |
+| POST | `…/lock/{key}` | `holder`, `expire` (both required) | — | `{"held": bool}` — taken if free, extended if this holder has it |
+| POST | `…/unlock/{key}` | `holder` | — | `{"released": bool}` |
+| GET | `/kv/{ns}/{db}/{space}` | `prefix`, `after`, `limit` (1–1000, default 100) | — | `{"keys": ["…"]}` in key order |
+
+- **A condition that does not hold is `false`, not an error.** `written: false`, `held: false` and the rest are
+  answers; a refusal is a `4xx` with `{"error": …}` as everywhere (§5.2).
+- **`expire` is a duration literal** (`30s`, `1h30m`) and must be positive: a zero or negative one is a `400`,
+  because the statement underneath would *remove* the key.
+- **A plain `PUT` clears an expiry the key had** — the space's rule, and the one every cache client must restate.
+- **`unlock` never deletes.** It writes `'free'` with a 1 ms expiry, conditional on the holder: a delete after the
+  lease lapsed would remove the next holder's lock, and a write without an expiry would make the key permanent.
+  A lock is a **lease**: past `expire`, another holder may take it and neither is told.
+- The body is **one TessariQL value**, read as §5.9 reads its array, so every value type survives; the answer's
+  `value` is spelled as §5.7 spells one.
+- A table that is not a space and one that is not there are one answer, `404`, given after the session has selected
+  the database. An operation that does not exist is `404`; an existing one with the wrong method is `405`.
+- A client that presents a password pays the node's password hash per request; exchange it for a token (§5.8).
 
 ---
 
