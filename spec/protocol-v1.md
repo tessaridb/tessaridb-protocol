@@ -899,7 +899,7 @@ peer to have applied it. Since node `0.10.0-beta`.
 
 ## 5. The HTTP surface
 
-**21 callable routes and 16 refusal behaviours.** Authentication is HTTP Basic
+**22 callable routes and 19 refusal behaviours.** Authentication is HTTP Basic
 **or a bearer token this node issued** — two schemes on one header, and §5.8 is
 where a client learns which to send when. A store with no users declared is
 **open** and runs anything; the first `DEFINE USER` closes it, and from then on a
@@ -947,6 +947,7 @@ routes are marked so, and neither is an oversight to be relaxed.
 | HEAD | `/files/{ns}/{db}/{bucket}/{path…}` | session | 200 / 404 | octet-stream |
 | HEAD | `/files/{ns}/{db}/{bucket}` | session | 200 / 404 | json |
 | DELETE | `/files/{ns}/{db}/{bucket}/{path…}` | session | 204 | — (no body) |
+| POST | `/series/{ns}/{db}/{series}` | session | 200 | json — `{"appended":n}` (§5.9), since node `0.14.0-beta` |
 | GET | `/` | open | 200 | `text/html` — console, build-conditional |
 | GET | `/console.css` | open | 200 | `text/css` — build-conditional |
 | GET | `/console.js` | open | 200 | `text/javascript` — build-conditional |
@@ -1047,11 +1048,14 @@ Notes a client implementer needs:
 |---|---|
 | wrong method on `/script` `/health` `/ready` `/metrics` `/watch` | 405 json |
 | method other than PUT/POST/GET/HEAD/DELETE on `/files/…` | 405 json |
+| method other than POST on `/series/…` | 405 json |
 | a path no route claims | 404 json |
 | `/backup?` with any query that is not `from=<u64>` | 400 json |
 | a `/files/…` segment that is not `[A-Za-z0-9_]+` | 400 json |
 | PUT or DELETE on a bucket with no file path | 400 json |
 | any `/files/…` request naming a bucket that is not one | 404 json |
+| a `/series/…` segment that is not `[A-Za-z0-9_]+`, or a body that is not one array of objects of literals (§5.9) | 400 json |
+| a `/series/…` request naming a table that is not a series, or none | 404 json |
 | `/watch` without upgrade headers, or another websocket version | 426 json |
 | `/watch` upgrade with no `Sec-WebSocket-Key` | 400 json |
 | no credential against a closed store, or one refused | 401 + `WWW-Authenticate` |
@@ -1721,6 +1725,58 @@ session for as long as it is open, so the credential in the request body (§3.4)
 is verified once per connection and never again. The token exists because HTTP
 has no connection-scoped identity to hold one — it buys back on a stateless
 surface what the wire protocol has by construction.
+
+### 5.9 `POST /series/{ns}/{db}/{series}` — appending events
+
+Since node `0.14.0-beta`. A batch of events for one series, written in **one
+transaction**: every event lands or none does, and the answer says how many.
+
+```
+POST /series/prod/metrics/readings
+[{ 'sensor': 's1', 'v': 21.5, 'at': datetime '2026-09-29T10:00:02Z' },
+ { 'sensor': 's2', 'v': 19.0, 'at': datetime '2026-09-29T10:00:01Z' }]
+
+200 {"appended":2}
+```
+
+- The three segments are **names** and are held to `[A-Za-z0-9_]+`, as on
+  `/files/…`; anything else is a `400` before any statement exists.
+- The body is **one TessariQL value: an array of objects**, every value in it a
+  literal — the same reading §5.5 gives a parameter, extended to arrays and
+  objects. Nothing in it is evaluated: a function call, a parameter, a path or a
+  subquery anywhere inside is a `400`. It is not JSON; the reason is §5.5's.
+- Each event becomes one `CREATE` through the caller's own session, so grants,
+  tenancy, the series' own checks and its rollups are exactly a script's. An
+  event the series refuses — an event-time series given no time, a time below
+  its floor — fails the batch with that refusal's status, and **nothing** of the
+  batch is kept.
+- A table that is not a series and a table that is not there are one answer,
+  `404`, given only after the session has selected the database, so it tells a
+  caller nothing about a tenancy they cannot reach.
+- The ceiling is the body's: 16 MiB (§5.2). There is no separate event count.
+
+**How a client spells an event.** A client that offers a typed method for this
+route renders each value as TessariQL source, and §5.5's second obligation is its
+own. The set an event needs is small, and every other kind is refused by the
+client before sending rather than approximated:
+
+| value | spelling | note |
+|---|---|---|
+| `null` | `NULL` | |
+| `none` | *the field is left out* | absence is the encoding, as in §5.6 |
+| `bool` | `true` / `false` | |
+| integer | `-12` | decimal digits, optional leading `-` |
+| float | `21.5`, `1.0`, `1.5e300` | MUST carry a `.` or an exponent, or it reads as an integer; a non-finite float is refused by the client |
+| decimal | `dec 12.34` | |
+| `string` | `'it\'s'` | single quotes; `\` becomes `\\` and `'` becomes `\'`, and nothing else is escaped — any other `\x` is refused by the node |
+| `datetime` | `datetime '2026-09-29T10:00:00.123456789Z'` | RFC 3339 in UTC |
+| `uuid` | `uuid '0190a0b1-0000-7000-8000-000000000001'` | hyphenated lowercase |
+| `array` | `[a, b]` | elements recurse through this table |
+| `object` | `{ 'name': value }` | every key quoted as a string, so no key needs to be an identifier |
+
+Every spelling here was read back through the node's own parser on `dev`
+`585bbe2` (2026-09-30); a client's live test is the check that its renderer
+still agrees.
 
 ---
 
