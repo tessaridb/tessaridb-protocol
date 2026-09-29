@@ -101,16 +101,25 @@ database's topic of the same name with no error at all.
 
 ## 6. Refusals
 
-The two retriable refusals — commit contention and conflict — MAY reach a
-consumer when several members of one group read or acknowledge at the same
-moment and the node's own one-second re-run was not enough. A client MUST retry
-the same statement after a short pause (the §4.5 wait is suitable) and MUST NOT
-surface either to the handler. Every other refusal ends the consumer with that
-refusal reported to the caller; in particular a node that answers `NotAGroup`
-(no group under that name) or `NotATopic` is misconfiguration, not load.
+Members of one group take turns on the group's record, so two of them reading
+or acknowledging at the same moment meet. **The node already handles that**: a
+lone `READ`, `ACK` or `NACK` that loses the race is run again on a fresh
+snapshot for up to one second before anything is refused. A consumer therefore
+does not retry on its own account, and over the wire it could not tell a
+contention refusal from any other: a refusal carries the node's words and no
+class (protocol §3.11), and a client MUST NOT parse the words to decide.
 
-`401` and `403` stay apart, as everywhere: the first means sign in, the second
-means signing in again will never help.
+- **Wire**: a transport failure (`Io`, `Truncated`) may be retried by opening a
+  new connection and reading again — the group holds the state, so nothing is
+  lost or doubled beyond what at-least-once already allows. A `Refused` ends the
+  consumer and is reported to the caller with the node's words.
+- **HTTP**: `409` is the store-level conflict and MAY be retried after the §4.5
+  wait; every other status ends the consumer and is reported.
+
+`NotAGroup` (no group under that name) and `NotATopic` are misconfiguration, not
+load, and reach the caller as refusals like any other. `401` and `403` stay
+apart, as everywhere: the first means sign in, the second means signing in again
+will never help.
 
 ## 7. Verification
 
