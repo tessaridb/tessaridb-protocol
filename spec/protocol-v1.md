@@ -37,6 +37,7 @@ A node serves two surfaces and **neither carries everything**.
 |---|---|---|
 | statements and parameters | yes | yes |
 | change subscription | yes | separate socket protocol |
+| a browser | over a WebSocket, `GET /wire` (3.13) | yes |
 | objects and files | — | yes |
 | backup | — | yes |
 | health, readiness, metrics | — | yes |
@@ -697,6 +698,47 @@ and giving it a meaning would let corruption decode as a value.
 method and the body survive the hop, and a script a client quietly dropped on the
 way to the other node is a worse outcome than a refusal.
 
+### 3.13 The wire protocol over a WebSocket — `GET /wire`
+
+Since node `0.15.0-beta`. A browser cannot open a TCP socket, so the same protocol is also carried over a WebSocket
+on the **HTTP** port: `GET /wire` upgrades, and from then on the socket carries **exactly the bytes of this section
+3** — the greeting of 3.1, then frames of 3.2 — with nothing added and nothing narrowed. Every value type survives.
+
+**The WebSocket is a byte pipe.** Binary messages, concatenated in order, are the byte stream in each direction.
+Message boundaries carry **no meaning**: a sender may put half a frame in one message, or three frames in one, and a
+receiver reassembles as it would from TCP reads. (The node sends the greeting and each frame as one message; a client
+must not depend on that.)
+
+- A **text** message is not part of the protocol; the node closes with code **1003**.
+- One message may be at most **16 MiB + 5 bytes** (a frame at the ceiling with its header); a larger one is closed with
+  **1009**. The 16 MiB frame ceiling of 3.2 still applies to every frame inside.
+- A close **between** frames is a goodbye; a close **inside** a greeting, header or body is truncation — the 3.2 rule.
+
+**It is a wire session.** Greeting deadline, one session per connection (3.10), subscribing consumes the connection,
+the 30-second drop of a subscriber that stops reading, and the node's connection ceiling — which counts TCP and
+WebSocket sessions together — are all as over TCP.
+
+**Credentials travel in the Request frame (3.4), as over TCP.** An `Authorization` header on the upgrade is
+**ignored**, and so is any cookie: a browser attaches both to a WebSocket handshake from any page, so honouring
+either would let any page act as the user. The node does not check `Origin`, because nothing ambient authenticates.
+A store with **no users** is open over this route as it is over every other.
+
+| condition | answer |
+|---|---|
+| upgrade accepted | `101`, then the node's greeting as the first binary message |
+| the node does not serve the wire protocol (started without a wire address) | `404` json |
+| the connection ceiling is reached | `503` json, before any upgrade |
+| not an upgrade, or another websocket version | `426` json |
+| an upgrade with no `Sec-WebSocket-Key` | `400` json |
+| a text message | close `1003` |
+| a message over 16 MiB + 5 bytes | close `1009` |
+
+There is no TLS on this route either. `wss://` is a TLS-terminating proxy in front of the HTTP port; a page served over
+`https://` cannot open `ws://` at all.
+
+A browser's `WebSocket` has no read-side flow control: a subscriber that stops consuming changes accumulates them in
+the page's memory rather than filling a socket, so the node's 30-second drop never fires for it. A client says so.
+
 ---
 
 ## 4. Value encoding
@@ -940,6 +982,7 @@ routes are marked so, and neither is an oversight to be relaxed.
 | POST | `/script` (plain body) | session | 200 | json |
 | POST | `/script` (JSON envelope) | session | 200 | json |
 | GET | `/watch` | session | 101 (upgrade) | — |
+| GET | `/wire` | in the wire session (§3.13) | 101 (upgrade) | binary — the wire protocol, since node `0.15.0-beta` |
 | PUT | `/files/{ns}/{db}/{bucket}/{path…}` | session | 201 | json |
 | POST | `/files/{ns}/{db}/{bucket}/{path…}` | session | 201 | json |
 | GET | `/files/{ns}/{db}/{bucket}/{path…}` | session | 200 / 404 | octet-stream |
@@ -1058,6 +1101,9 @@ Notes a client implementer needs:
 | a `/series/…` request naming a table that is not a series, or none | 404 json |
 | `/watch` without upgrade headers, or another websocket version | 426 json |
 | `/watch` upgrade with no `Sec-WebSocket-Key` | 400 json |
+| `/wire` on a node that does not serve the wire protocol | 404 json |
+| `/wire` when the connection ceiling is reached | 503 json |
+| `/wire` without upgrade headers, another websocket version, or no key | as `/watch` (426 / 400) |
 | no credential against a closed store, or one refused | 401 + `WWW-Authenticate` |
 | authenticated but not permitted (role, tenancy, grant) | 403 json |
 | a token presented to `POST /session` or `POST /password` | 401 json |
