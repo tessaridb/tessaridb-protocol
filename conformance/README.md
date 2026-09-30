@@ -181,13 +181,14 @@ and refuses each case carrying `refused` with the stated `reason`.
 ## The fifth corpus: `vault-v1.json`
 
 Two halves, both from `spec/vault-v1.md`. `frames`: the body of a Vault frame (tag 17, protocol §3.14) for each act,
-as hex — a client's encoder produces exactly those bytes. `statements`: the list, reveal, write, recipient and audit
+as hex, on the store and on one vault carrying its own passphrase — a client's encoder produces exactly those bytes. `statements`: the list, reveal, write, recipient and audit
 statements over a namespace, database and vault, rendered to exactly a `script` and `parameters` (string, integer as
 decimal text, bytes as hex), or refused before sending with the stated `reason`. Field names render quoted, so a
 field called `password` is reachable.
 
 `verify_vault_against_node.py` sends every case to a node with an empty in-memory store (`tessaridb --serve …`):
-the frames set its first passphrase, change it and are refused where the corpus says, and every statement case runs.
+the store frames set its first passphrase, change it and are refused where the corpus says, every statement case runs,
+and the frames aimed at one vault seal, unseal and rekey a vault the setup declared with its own passphrase.
 
 ## Regenerating
 

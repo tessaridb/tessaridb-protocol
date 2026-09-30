@@ -53,13 +53,13 @@ So the specification comes first and lives on its own:
 | `spec/query-builder-v1.md` | the rendering contract for a query builder, version 1.1 — **language, not protocol**, and separate for that reason (§6) |
 | `spec/consumer-v1.md` | the contract for consuming a topic with a callback as a member of a consumer group — the statements sent, auto and manual acknowledgement, waiting, refusals; **language, not protocol** |
 | `spec/cache-v1.md` | the contract for a space used as a cache, a counter and a lock — the statements each call sends, `getOrSet`, the lease; **language, not protocol** |
-| `spec/vault-v1.md` | the contract for a client's vault functions — status, unseal, seal, change the passphrase over the vault frame or routes; list, reveal, write, recipients and audit as statements; where a passphrase may never appear |
+| `spec/vault-v1.md` | the contract for a client's vault functions — status, unseal, seal, change the passphrase — of the store or of one vault with its own — over the vault frame or routes; list, reveal, write, recipients and audit as statements; where a passphrase may never appear |
 | `conformance/` | executable test vectors every client is checked against |
 | `conformance/values-v1.json` | the value codec, 54 vectors, both directions |
 | `conformance/queries-v1.json` | the query builder, 38 cases, rendering and refusals |
 | `conformance/json-v1.json` | the `POST /script` answer, 59 cases, decode only |
 | `conformance/consumer-v1.json` | the topic consumer's statements, 14 cases, rendering and refusals |
-| `conformance/vault-v1.json` | the vault frame's bodies and the vault functions' statements, 7 frames and 19 statements |
+| `conformance/vault-v1.json` | the vault frame's bodies — on the store and on one vault with its own passphrase — and the vault functions' statements, 11 frames and 19 statements |
 | `conformance/README.md` | how to run the corpora against a client |
 
 ## The version, and what it promises

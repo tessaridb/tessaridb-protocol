@@ -12,7 +12,7 @@
       "build": {
         "act": "status"
       },
-      "body_hex": "0001"
+      "body_hex": "000001"
     },
     {
       "name": "unseal-as-nobody",
@@ -20,14 +20,14 @@
         "act": "unseal",
         "passphrase": "correct horse battery"
       },
-      "body_hex": "000200000015636f727265637420686f7273652062617474657279"
+      "body_hex": "00000200000015636f727265637420686f7273652062617474657279"
     },
     {
       "name": "seal-as-nobody",
       "build": {
         "act": "seal"
       },
-      "body_hex": "0003"
+      "body_hex": "000003"
     },
     {
       "name": "change-as-nobody",
@@ -36,7 +36,7 @@
         "current": "correct horse battery",
         "new": "staple 9f2b"
       },
-      "body_hex": "000400000015636f727265637420686f72736520626174746572790000000b737461706c652039663262"
+      "body_hex": "00000400000015636f727265637420686f72736520626174746572790000000b737461706c652039663262"
     },
     {
       "name": "unseal-as-a-user",
@@ -49,7 +49,7 @@
         }
       },
       "note": "Credentials come first, as in a Request (§3.4), then the act.",
-      "body_hex": "0100000004726f6f740000000d726f6f742070617373776f72640200000015636f727265637420686f7273652062617474657279"
+      "body_hex": "0100000004726f6f740000000d726f6f742070617373776f7264000200000015636f727265637420686f7273652062617474657279"
     },
     {
       "name": "a-passphrase-is-utf8-and-counted-in-bytes",
@@ -58,7 +58,7 @@
         "passphrase": "пароль ключ"
       },
       "note": "The length prefix counts bytes, not characters.",
-      "body_hex": "000200000015d0bfd0b0d180d0bed0bbd18c20d0bad0bbd18ed187"
+      "body_hex": "00000200000015d0bfd0b0d180d0bed0bbd18c20d0bad0bbd18ed187"
     },
     {
       "name": "an-empty-passphrase-is-still-a-field",
@@ -66,7 +66,59 @@
         "act": "unseal",
         "passphrase": ""
       },
-      "body_hex": "000200000000"
+      "body_hex": "00000200000000"
+    },
+    {
+      "name": "status-of-one-vault",
+      "build": {
+        "act": "status",
+        "vault": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team_own"
+        }
+      },
+      "note": "The target sits between the credentials and the act: 1, then namespace, database, vault.",
+      "body_hex": "00010000000473686f70000000046c697665000000087465616d5f6f776e01"
+    },
+    {
+      "name": "seal-one-vault",
+      "build": {
+        "act": "seal",
+        "vault": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team_own"
+        }
+      },
+      "body_hex": "00010000000473686f70000000046c697665000000087465616d5f6f776e03"
+    },
+    {
+      "name": "unseal-one-vault",
+      "build": {
+        "act": "unseal",
+        "passphrase": "a team passphrase",
+        "vault": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team_own"
+        }
+      },
+      "body_hex": "00010000000473686f70000000046c697665000000087465616d5f6f776e020000001161207465616d2070617373706872617365"
+    },
+    {
+      "name": "change-one-vaults-passphrase",
+      "build": {
+        "act": "change",
+        "current": "a team passphrase",
+        "new": "a new team passphrase",
+        "vault": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team_own"
+        }
+      },
+      "body_hex": "00010000000473686f70000000046c697665000000087465616d5f6f776e040000001161207465616d20706173737068726173650000001561206e6577207465616d2070617373706872617365"
     }
   ],
   "statements": [

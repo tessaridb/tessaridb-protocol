@@ -37,6 +37,12 @@ FRAMES_EXPECT = {
     "unseal-as-a-user": ("refusal", None),  # no such user on this open store
     "a-passphrase-is-utf8-and-counted-in-bytes": ("refusal", None),  # not the passphrase
     "an-empty-passphrase-is-still-a-field": ("refusal", None),  # nor this
+    # Sent after SETUP has declared `team_own` with its own passphrase, which
+    # leaves it unsealed for one period.
+    "status-of-one-vault": ("answer", "unsealed"),
+    "seal-one-vault": ("answer", "sealed"),
+    "unseal-one-vault": ("answer", "unsealed"),
+    "change-one-vaults-passphrase": ("answer", "unsealed"),
 }
 
 # The passphrase the frames leave the store with (the change case's `new`).
@@ -52,6 +58,7 @@ SETUP = [
     "DEFINE FIELD 'password' ON team TYPE string SECRET;",
     "DEFINE FIELD Recovery ON team TYPE string SECRET;",
     "DEFINE FIELD login ON team TYPE string;",
+    "DEFINE VAULT team_own PASSPHRASE 'a team passphrase';",
 ]
 
 
@@ -79,14 +86,22 @@ def verify(corpus: dict, node: Node) -> list[dict]:
     rows = []
     if node.minor < 2:
         return [{"case": "greeting", "ok": False, "said": f"node minor {node.minor}; the frame needs 2"}]
-    for case in corpus["frames"]:
+    def send(case: dict) -> None:
         expected = FRAMES_EXPECT[case["name"]]
         got = vault_frame(node, bytes.fromhex(case["body_hex"]))
         rows.append({"case": case["name"], "ok": got == expected, "said": f"{got}, expected {expected}"})
 
+    for case in corpus["frames"]:
+        if "vault" not in case["build"]:
+            send(case)
+
     node.request(f"UNSEAL VAULT WITH '{PASSPHRASE_AFTER_FRAMES}';")
     for statement in SETUP:
         node.request(statement)
+    # The frames aimed at one vault need it declared, and SETUP declares it.
+    for case in corpus["frames"]:
+        if "vault" in case["build"]:
+            send(case)
     # The write first, so the reads after it find a record to read.
     ordered = sorted(corpus["statements"], key=lambda case: "write" not in case["build"])
     for case in ordered:

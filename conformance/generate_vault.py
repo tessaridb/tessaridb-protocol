@@ -43,6 +43,14 @@ def frame_body(build):
         body.append(1)
         body += text(credentials["name"])
         body += text(credentials["password"])
+    vault = build.get("vault")
+    if vault is None:
+        body.append(0)
+    else:
+        body.append(1)
+        body += text(vault["namespace"])
+        body += text(vault["database"])
+        body += text(vault["vault"])
     act = build["act"]
     if act == "status":
         body.append(1)
@@ -135,6 +143,7 @@ def render(build):
 # --- cases --------------------------------------------------------------------
 
 WHERE = {"namespace": "shop", "database": "live", "vault": "team"}
+TEAM_OWN = {"namespace": "shop", "database": "live", "vault": "team_own"}
 GITHUB = {"string": "github"}
 
 
@@ -176,6 +185,17 @@ FRAMES = [
         "The length prefix counts bytes, not characters.",
     ),
     frame("an-empty-passphrase-is-still-a-field", {"act": "unseal", "passphrase": ""}),
+    frame(
+        "status-of-one-vault",
+        {"act": "status", "vault": TEAM_OWN},
+        "The target sits between the credentials and the act: 1, then namespace, database, vault.",
+    ),
+    frame("seal-one-vault", {"act": "seal", "vault": TEAM_OWN}),
+    frame("unseal-one-vault", {"act": "unseal", "passphrase": "a team passphrase", "vault": TEAM_OWN}),
+    frame(
+        "change-one-vaults-passphrase",
+        {"act": "change", "current": "a team passphrase", "new": "a new team passphrase", "vault": TEAM_OWN},
+    ),
 ]
 
 STATEMENTS = [
