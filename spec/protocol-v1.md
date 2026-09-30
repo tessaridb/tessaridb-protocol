@@ -1,7 +1,7 @@
 # TessariDB protocol — specification for client implementers
 
-**Protocol version 1.1.** Drafted 2026-08-24; `1.1` on 2026-09-14, when the
-redirect frame arrived. The header said `1.0` until 2026-09-17 while §2.3 and
+**Protocol version 1.2.** Drafted 2026-08-24; `1.1` on 2026-09-14, when the
+redirect frame arrived; `1.2` with node `0.17.0-beta`, when the vault frame did. The header said `1.0` until 2026-09-17 while §2.3 and
 §3.3 already described `minor = 1` — a version sentence that disagrees with the
 document under it is worse than none, because a client implementer reads the
 first one.
@@ -163,6 +163,13 @@ peer that greeted with `minor = 0`. Such a peer receives the refusal it would ha
 received before the frame existed, which is a worse answer than the redirect and a
 better one than a frame it would have to treat as a broken stream.
 
+`minor = 2` introduces **`Vault` (tag 17)**, since node `0.17.0-beta` — the first
+frame a **client** sends that an older node cannot read, so the obligation runs the
+other way: a client sends it only to a node whose greeting carried `minor >= 2`,
+and tells its caller *this node does not have the vault frame* otherwise, before
+sending anything. An older node would close the connection on the unknown kind,
+which reads as a network fault rather than as the version gap it is.
+
 ---
 
 ## 3. The wire protocol
@@ -174,7 +181,7 @@ TCP. On connect, **both sides send** the greeting before anything else:
 ```
 "TESS"   4 bytes, ASCII, literally 0x54 0x45 0x53 0x53
 major    1 byte, currently 1
-minor    1 byte, currently 1
+minor    1 byte, currently 2
 ```
 
 Six bytes.
@@ -235,8 +242,9 @@ cannot be asked about after the fact by a client of a different build.
 | 4 | Subscribe | client → node | 3.7 |
 | 5 | Change | node → client | 3.8 |
 | 13 | Elsewhere | node → client | 3.12 |
+| 17 | Vault | client → node | 3.14 |
 
-**Thirteen, and not six.** Tags 6 through 12 and 14 through 16 are taken by the
+**Thirteen and seventeen, and not six and seven.** Tags 6 through 12 and 14 through 16 are taken by the
 link nodes use to talk to each other, which shares this one byte and is not part
 of the client protocol. A client never sends one and never receives one, and a node that
 receives a client frame on a peer connection — or the reverse — treats it as an
@@ -251,8 +259,8 @@ An **unknown frame kind closes the connection**. It is not skipped. A protocol
 that ignores what it does not understand is one where a version mismatch looks
 like silence.
 
-A client that receives `Request`, `Subscribe`, or — on a connection that has not
-subscribed — `Change`, treats it as an unknown frame.
+A client that receives `Request`, `Subscribe`, `Vault`, or — on a connection that
+has not subscribed — `Change`, treats it as an unknown frame.
 
 ### 3.4 Request body
 
@@ -739,6 +747,63 @@ There is no TLS on this route either. `wss://` is a TLS-terminating proxy in fro
 A browser's `WebSocket` has no read-side flow control: a subscriber that stops consuming changes accumulates them in
 the page's memory rather than filling a socket, so the node's 30-second drop never fires for it. A client says so.
 
+### 3.14 Vault body — unseal, seal, change the passphrase, ask
+
+Since node `0.17.0-beta`, protocol minor 2. The four acts on the store's key, or on one vault that carries its own
+passphrase, with the passphrase as a **field of the frame** and never as script text: a script is what a console keeps in its history, what a client logs when a
+request fails and what a proxy records. The statements `UNSEAL VAULT WITH '…'` and `CHANGE VAULT PASSPHRASE` stay for
+scripts; a client offering vault functions uses this frame (or the HTTP routes of 5.11) instead.
+
+```
+u8      credentials flag: 0 = none, 1 = present
+        if 1:
+text      user name
+text      password
+u8      target
+        0 = the store       nothing follows
+        1 = one vault       text   namespace
+                            text   database
+                            text   vault
+u8      act
+        1 = status          nothing follows
+        2 = unseal          text   the passphrase
+        3 = seal            nothing follows
+        4 = change          text   the current passphrase
+                            text   the new passphrase
+```
+
+Nothing may follow the last field; a body with bytes left over, an act byte other than 1-4, a target other than 0 or 1,
+or a credentials flag other than 0 or 1 is malformed.
+
+A vault target names a vault declared with its own passphrase (`DEFINE VAULT v PASSPHRASE '…'`): its key is wrapped
+under that passphrase instead of the store's, so the store's passphrase opens nothing in it. The acts on it are the
+statements `UNSEAL VAULT v WITH`, `SEAL VAULT v` and `CHANGE VAULT v PASSPHRASE`, run in the named tenancy without
+changing the connection's own `USE`. Acts 2-4 on a vault that opens with the store's passphrase are refused
+(`VaultUsesStorePassphrase`), because unsealing the store by naming one vault would open every other vault in its
+custody. The node answers every act with an **Answer** (3.5) holding **one** outcome — a
+`Value` whose value is the seal status object:
+
+| field | value |
+|---|---|
+| `state` | string: `uninitialised` (the store has no passphrase yet), `sealed`, or `unsealed` |
+| `seals_at` | datetime when `unsealed` — the instant the store seals itself; absent (`none`) otherwise |
+| `unseal_for` | duration — how long an unseal lasts on this node |
+| `initialised` | `true`, present only on the unseal that set the store's first passphrase |
+| `custody` | string, present only for a vault target: `own` (the vault's passphrase) or `store` — for which the state is the store's |
+
+or with a **Refusal** (3.6), whose text never contains either passphrase. The connection stays a conversation after
+either. An unseal lasts `unseal_for` from the moment it is taken and is not renewed by use; unsealing a store that is
+already unsealed is refused, so a client extends a window by sealing and unsealing again.
+
+On the store, acts 2-4 need the authority `UNSEAL VAULT` needs (operate, store-wide) and act 1 needs only a session
+that may run a statement at all. On a vault, acts 1-3 need read in its database and act 4 needs manage there. Wrong
+passphrases are throttled per store, and per vault for a vault target: after three in a row a further attempt — right or not —
+is refused for a doubling wait. A client MUST treat that refusal as *wait*, never as *wrong*, and MUST NOT retry it in
+a loop.
+
+The status and the listing of a vault's record ids are also statements (`INFO FOR SEAL`, `INFO FOR SEAL OF v`,
+`INFO FOR VAULT v RECORDS`) and need no frame; a client may send them as Requests.
+
 ---
 
 ## 4. Value encoding
@@ -995,6 +1060,12 @@ routes are marked so, and neither is an oversight to be relaxed.
 | POST | `/series/{ns}/{db}/{series}` | session | 200 | json — `{"appended":n}` (§5.9), since node `0.14.0-beta` |
 | GET PUT DELETE POST | `/kv/{ns}/{db}/{space}/{op}/{key…}` | session | 200 / 404 | json (§5.10), since node `0.15.0-beta` |
 | GET | `/kv/{ns}/{db}/{space}` | session | 200 | json — a key listing (§5.10) |
+| GET | `/vault` | session | 200 | json — the seal status (§5.11), since node `0.17.0-beta` |
+| POST | `/vault/unseal` | session | 200 | json — the body is the passphrase (§5.11) |
+| POST | `/vault/seal` | session | 200 | json (§5.11) |
+| POST | `/vault/passphrase` | session | 200 | json — `{"current": …, "new": …}` (§5.11) |
+| GET | `/vault/{ns}/{db}/{vault}` | session | 200 | json — one vault's seal status (§5.11) |
+| POST | `/vault/{ns}/{db}/{vault}/unseal` · `/seal` · `/passphrase` | session | 200 | json — the three acts on one vault (§5.11) |
 | GET | `/` | open | 200 | `text/html` — console, build-conditional |
 | GET | `/console.css` | open | 200 | `text/css` — build-conditional |
 | GET | `/console.js` | open | 200 | `text/javascript` — build-conditional |
@@ -1106,6 +1177,11 @@ Notes a client implementer needs:
 | a `/kv/…` segment that is not a name, a bad `expire`/`if`/`by`/`limit`/`holder`, or a body that is not one value | 400 json |
 | a `/kv/…` request naming a table that is not a space, an unknown operation, or a key that is not there (`GET …/key`) | 404 json |
 | a `/kv/…` operation given the wrong method | 405 json |
+| a method other than GET on `/vault`, or other than POST on `/vault/unseal`, `/vault/seal`, `/vault/passphrase` — and the same under `/vault/{ns}/{db}/{vault}` | 405 json |
+| a namespace, database or vault in a `/vault/…` path that is not a name (`[A-Za-z_][A-Za-z0-9_]*`); an act on a vault that opens with the store's passphrase | 400 json |
+| a `/vault/passphrase` body that is not exactly `{"current": string, "new": string}` | 400 json, one fixed sentence that quotes nothing |
+| a wrong passphrase on `/vault/unseal` or `/vault/passphrase`; unsealing an unsealed store; a passphrase change on a store with none | 409 json |
+| a passphrase presented while wrong ones are being made to wait | 429 json |
 | `/watch` without upgrade headers, or another websocket version | 426 json |
 | `/watch` upgrade with no `Sec-WebSocket-Key` | 400 json |
 | `/wire` on a node that does not serve the wire protocol | 404 json |
@@ -1866,6 +1942,29 @@ fixed segment **before** the key, so a key containing `/incr` is still a key.
 - A client that presents a password pays the node's password hash per request; exchange it for a token (§5.8).
 
 ---
+
+### 5.11 `/vault` — the seal status, unseal, seal, change the passphrase
+
+Since node `0.17.0-beta`. The HTTP form of 3.14, with the same authority and the same answer as JSON:
+
+```
+{"seals_at": "2026-09-30T15:40:04.720671Z", "state": "unsealed", "unseal_for": "10m"}
+```
+
+`seals_at` is **absent** unless the store is unsealed — the field is left out, not sent as `null`, because an object field
+holding `none` is omitted (5.7) — and `initialised` (`true`) appears only on the unseal that set the first
+passphrase. Read against a node at `0.17.0-beta` on 2026-09-30:
+`{"state":"uninitialised","unseal_for":"10m"}` before the first unseal, and
+`{"initialised":true,"seals_at":"2026-09-30T15:40:04.720671Z","state":"unsealed","unseal_for":"10m"}` from it. The body of `POST /vault/unseal` is the passphrase and nothing else — one trailing line end is
+dropped, as `POST /password`'s is, so `curl --data-binary @file` works. `POST /vault/passphrase` takes
+`{"current": "…", "new": "…"}`. No route answers with, logs or quotes a passphrase, including in a `400`.
+
+The same four under `/vault/{namespace}/{database}/{vault}` — `GET` for the status, `POST …/unseal`, `…/seal`,
+`…/passphrase` with the same bodies — act on one vault carrying its own passphrase, and answer with `custody` beside
+the rest. Read against a node built from the engine's `dev` branch on 2026-09-30:
+`{"custody":"own","seals_at":"2026-09-30T17:00:50.825706Z","state":"unsealed","unseal_for":"10m"}` for a vault with its
+own passphrase, and `{"custody":"store","state":"sealed","unseal_for":"10m"}` for one in the store's custody while the
+store is sealed.
 
 ## 6. What is deliberately **not** part of this protocol
 
