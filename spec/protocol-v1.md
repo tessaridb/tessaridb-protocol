@@ -976,6 +976,8 @@ routes are marked so, and neither is an oversight to be relaxed.
 | GET | `/metrics` | open | 200 | `text/plain; version=0.0.4` |
 | GET | `/backup` | session | 200 | octet-stream |
 | GET | `/backup?from=<u64>` | session | 200 | octet-stream |
+| GET | `/backup?as=state` | session | 200 | octet-stream — a state snapshot (since node 0.16.0-beta) |
+| GET | `/backup?as=script` | session | 200 | octet-stream — the state as TessariQL text (since node 0.16.0-beta) |
 | POST | `/session` | basic | 200 | json — the token (§5.8) |
 | DELETE | `/session` | session | 200 | json |
 | POST | `/password` | basic | 200 | json |
