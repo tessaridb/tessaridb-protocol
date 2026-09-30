@@ -1,0 +1,428 @@
+{
+  "contract_major": 1,
+  "contract_minor": 0,
+  "protocol_minor": 2,
+  "what_this_is": "Vectors for the vault contract in spec/vault-v1.md. A conforming client encodes each `frames` case's `build` to exactly its `body_hex` (the body of a Vault frame, tag 17, protocol §3.14), renders each `statements` case to exactly its `script` with exactly its `parameters`, and refuses each case carrying `refused` before sending.",
+  "parameter_kinds": "string, integer (as decimal text) and bytes (as hex), each a one-key object.",
+  "run_it_against_a_node_too": "Agreement here is the offline half. Section 7 of the contract is the other: each client runs its vault functions against a node built from the engine's dev branch.",
+  "generated_by": "generate_vault.py",
+  "frames": [
+    {
+      "name": "status-as-nobody",
+      "build": {
+        "act": "status"
+      },
+      "body_hex": "0001"
+    },
+    {
+      "name": "unseal-as-nobody",
+      "build": {
+        "act": "unseal",
+        "passphrase": "correct horse battery"
+      },
+      "body_hex": "000200000015636f727265637420686f7273652062617474657279"
+    },
+    {
+      "name": "seal-as-nobody",
+      "build": {
+        "act": "seal"
+      },
+      "body_hex": "0003"
+    },
+    {
+      "name": "change-as-nobody",
+      "build": {
+        "act": "change",
+        "current": "correct horse battery",
+        "new": "staple 9f2b"
+      },
+      "body_hex": "000400000015636f727265637420686f72736520626174746572790000000b737461706c652039663262"
+    },
+    {
+      "name": "unseal-as-a-user",
+      "build": {
+        "act": "unseal",
+        "passphrase": "correct horse battery",
+        "credentials": {
+          "name": "root",
+          "password": "root password"
+        }
+      },
+      "note": "Credentials come first, as in a Request (§3.4), then the act.",
+      "body_hex": "0100000004726f6f740000000d726f6f742070617373776f72640200000015636f727265637420686f7273652062617474657279"
+    },
+    {
+      "name": "a-passphrase-is-utf8-and-counted-in-bytes",
+      "build": {
+        "act": "unseal",
+        "passphrase": "пароль ключ"
+      },
+      "note": "The length prefix counts bytes, not characters.",
+      "body_hex": "000200000015d0bfd0b0d180d0bed0bbd18c20d0bad0bbd18ed187"
+    },
+    {
+      "name": "an-empty-passphrase-is-still-a-field",
+      "build": {
+        "act": "unseal",
+        "passphrase": ""
+      },
+      "body_hex": "000200000000"
+    }
+  ],
+  "statements": [
+    {
+      "name": "list-the-first-page",
+      "build": {
+        "list": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team"
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; INFO FOR VAULT team RECORDS;",
+      "parameters": {}
+    },
+    {
+      "name": "list-a-page-of-ten",
+      "build": {
+        "list": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "limit": 10
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; INFO FOR VAULT team RECORDS LIMIT 10;",
+      "parameters": {}
+    },
+    {
+      "name": "list-the-page-after",
+      "build": {
+        "list": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "after": {
+            "string": "github"
+          },
+          "limit": 10
+        }
+      },
+      "note": "`after` is the previous page's `next`, bound as the value it came back as.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; INFO FOR VAULT team RECORDS AFTER team:$after LIMIT 10;",
+      "parameters": {
+        "after": {
+          "string": "github"
+        }
+      }
+    },
+    {
+      "name": "list-after-an-integer-id",
+      "build": {
+        "list": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "after": {
+            "integer": "42"
+          }
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; INFO FOR VAULT team RECORDS AFTER team:$after;",
+      "parameters": {
+        "after": {
+          "integer": "42"
+        }
+      }
+    },
+    {
+      "name": "a-limit-of-zero-is-refused",
+      "build": {
+        "list": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "limit": 0
+        }
+      },
+      "refused": {
+        "reason": "bad-limit",
+        "what": "a limit",
+        "name": "0"
+      }
+    },
+    {
+      "name": "a-limit-above-the-ceiling-is-refused",
+      "build": {
+        "list": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "limit": 10001
+        }
+      },
+      "refused": {
+        "reason": "bad-limit",
+        "what": "a limit",
+        "name": "10001"
+      }
+    },
+    {
+      "name": "reveal-every-secret-field",
+      "build": {
+        "reveal": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          }
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; REVEAL * FROM team:$id;",
+      "parameters": {
+        "id": {
+          "string": "github"
+        }
+      }
+    },
+    {
+      "name": "reveal-named-fields-in-byte-order",
+      "build": {
+        "reveal": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          },
+          "fields": [
+            "token",
+            "password",
+            "Recovery"
+          ]
+        }
+      },
+      "note": "Ascending byte order, so `Recovery` sorts before the lower-case names; quoted, so `password` is a name.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; REVEAL 'Recovery', 'password', 'token' FROM team:$id;",
+      "parameters": {
+        "id": {
+          "string": "github"
+        }
+      }
+    },
+    {
+      "name": "write-fields-in-byte-order-with-bound-values",
+      "build": {
+        "write": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          },
+          "fields": {
+            "token": {
+              "string": "t0"
+            },
+            "login": {
+              "string": "boog"
+            }
+          }
+        }
+      },
+      "note": "UPSERT … MERGE creates when absent and keeps every other field and every recipient.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; UPSERT team:$id MERGE { 'login': $f0, 'token': $f1 };",
+      "parameters": {
+        "id": {
+          "string": "github"
+        },
+        "f0": {
+          "string": "boog"
+        },
+        "f1": {
+          "string": "t0"
+        }
+      }
+    },
+    {
+      "name": "a-write-with-no-fields-is-refused",
+      "build": {
+        "write": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          },
+          "fields": {}
+        }
+      },
+      "refused": {
+        "reason": "no-fields",
+        "what": "a write"
+      }
+    },
+    {
+      "name": "list-recipients",
+      "build": {
+        "recipients": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          }
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; INFO FOR RECIPIENTS OF team:$id;",
+      "parameters": {
+        "id": {
+          "string": "github"
+        }
+      }
+    },
+    {
+      "name": "add-a-recipient",
+      "build": {
+        "add_recipient": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          },
+          "name": "bob",
+          "key": "0a0b0c"
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; ADD RECIPIENT $name TO team:$id KEY $key;",
+      "parameters": {
+        "id": {
+          "string": "github"
+        },
+        "name": {
+          "string": "bob"
+        },
+        "key": {
+          "bytes": "0a0b0c"
+        }
+      }
+    },
+    {
+      "name": "remove-a-recipient",
+      "build": {
+        "remove_recipient": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          },
+          "name": "bob"
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; REMOVE RECIPIENT $name FROM team:$id;",
+      "parameters": {
+        "id": {
+          "string": "github"
+        },
+        "name": {
+          "string": "bob"
+        }
+      }
+    },
+    {
+      "name": "the-whole-audit-trail",
+      "build": {
+        "audit": {
+          "namespace": "shop",
+          "database": "live"
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; INFO FOR AUDIT;",
+      "parameters": {}
+    },
+    {
+      "name": "one-actors-audit-trail",
+      "build": {
+        "audit": {
+          "namespace": "shop",
+          "database": "live",
+          "actor": "ada"
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; INFO FOR AUDIT BY ada;",
+      "parameters": {}
+    },
+    {
+      "name": "a-vault-that-is-not-a-name-is-refused",
+      "build": {
+        "list": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team-2"
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a vault",
+        "name": "team-2"
+      }
+    },
+    {
+      "name": "a-field-that-is-not-a-name-is-refused-not-quoted",
+      "build": {
+        "reveal": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          },
+          "fields": [
+            "pass word"
+          ]
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a field",
+        "name": "pass word"
+      }
+    },
+    {
+      "name": "a-namespace-that-is-not-a-name-is-refused",
+      "build": {
+        "reveal": {
+          "namespace": "1shop",
+          "database": "live",
+          "vault": "team",
+          "id": {
+            "string": "github"
+          }
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a namespace",
+        "name": "1shop"
+      }
+    },
+    {
+      "name": "an-actor-that-is-not-a-name-is-refused",
+      "build": {
+        "audit": {
+          "namespace": "shop",
+          "database": "live",
+          "actor": "o'brien"
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "an actor",
+        "name": "o'brien"
+      }
+    }
+  ]
+}
