@@ -60,6 +60,7 @@ So the specification comes first and lives on its own:
 | `conformance/json-v1.json` | the `POST /script` answer, 59 cases, decode only |
 | `conformance/consumer-v1.json` | the topic consumer's statements, 14 cases, rendering and refusals |
 | `conformance/vault-v1.json` | the vault frame's bodies — on the store and on one vault with its own passphrase — and the vault functions' statements, 11 frames and 19 statements |
+| `conformance/frames-v1.json` | the `Elsewhere` (redirect) frame body — 4 decoded and 4 malformed |
 | `conformance/README.md` | how to run the corpora against a client |
 
 ## The version, and what it promises
@@ -106,7 +107,7 @@ See `spec/protocol-v1.md` §2.2.
 
 The counts above are the lengths of the `cases` arrays in the three corpus files,
 read from the files rather than remembered. **Nothing checks them.**
-`scripts/test_conformance.sh` regenerates all three corpora and fails if a
+`scripts/test_conformance.sh` regenerates all six corpora and fails if a
 committed file differs from its generator — which catches a changed *vector* and
 not a stale *number in this README*. Two of these three were wrong until
 2026-09-08 for exactly that reason. Re-read them from the files when a generator

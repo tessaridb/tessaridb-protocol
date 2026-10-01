@@ -158,7 +158,8 @@ that learns a peer's minor is **older** withholds what that peer cannot read; it
 never refuses, and it never changes how it decodes. The obligation belongs to the
 **sender**, because the receiver has no way to discharge it.
 
-`minor = 1` introduces **`Elsewhere` (tag 13)**, and a node does not send it to a
+`minor = 1` introduces **`Elsewhere` (tag 13)**, decoded per the vectors of
+`conformance/frames-v1.json`, and a node does not send it to a
 peer that greeted with `minor = 0`. Such a peer receives the refusal it would have
 received before the frame existed, which is a worse answer than the redirect and a
 better one than a frame it would have to treat as a broken stream.
@@ -658,7 +659,7 @@ cannot know it was safe to repeat.
 
 Sent only by a node whose peer greeted with `minor ≥ 1` (2.3). Answers a request
 in place of `Answer` or `Refusal`, and means: *this node did not run your request,
-and the node that should is at this address.* Three requests earn one (since node
+and the node that should is at this address.* Four requests earn one (since node
 `0.20.0-beta`; before it, bounded reads only):
 
 - a **read** whose `STALENESS` or `ANSWERED BY LEADER` this node cannot meet and a
@@ -668,6 +669,11 @@ and the node that should is at this address.* Three requests earn one (since nod
   an `UPDATE` or `DELETE` makes — sent to a member holding the whole table that
   the node has heard serving — `transient`, because the same read outside a
   transaction is one this node gathers itself. With no such member it is a
+  `Refusal`;
+- a read a partial holder **gathers** whose leader holds a different map of the
+  table (the shard retired there, or not applied here yet) — sent to such a
+  member as well, `transient`: the two maps come back into agreement on their
+  own, and the whole holder answers meanwhile. With no such member it is a
   `Refusal`;
 - a **write** into a range another node leads — `settled`, because it names a
   leadership, which holds until its epoch is superseded. A write spanning two
@@ -702,6 +708,34 @@ handles failures correctly — logs them, retries a bounded number of times, giv
 up — handles an instruction encoded as one **incorrectly, every time, by
 construction**. So it is its own frame kind and never a refusal carrying a hint,
 and a conforming client must not surface it through the error path of 3.11.
+
+**Following one.** A client that follows redirects does it like this, and the
+five reference clients do exactly this:
+
+1. Send the request. While the reply is an `Elsewhere`:
+2. Stop with a *redirect loop* after **three** hops followed; a fourth redirect
+   is a loop, or a cluster moving faster than one request can follow, and going on
+   would not tell the two apart.
+3. Refuse an `epoch` **lower** than one already followed for this request (a
+   *stale redirect*): it was decided under an older leadership and points at the
+   past. Then hold this `epoch` as the floor.
+4. Before the first hop, ask the node being left `RETURN session::context();`
+   (node `0.20.0-beta`): `{ node, namespace, database }`, the last two `null`
+   when the session selected nothing. Any session may ask it.
+5. Open a connection to `endpoint` with the same credentials, and ask it
+   `RETURN session::context();`. A `node` different from the redirect's is a
+   *wrong node*: close the connection and send nothing there.
+6. Select the tenancy read in step 4 there — `USE NAMESPACE n; USE DATABASE d;` —
+   each name only when it matches `^[A-Za-z_][A-Za-z0-9_]*$`. A name is grammar,
+   and a client that quoted one into a script would make a value into syntax;
+   one that does not match stops the follow (*not followable*).
+7. Send the request there.
+8. When it answers: after a `settled` redirect the client's connection **is now**
+   that one, and the old one is closed; after a `transient` one the new connection
+   is closed and the client stays where it was.
+
+A client whose transport cannot dial `endpoint` — a browser over §3.13 — returns
+the redirect to its caller instead.
 
 **A client may ignore it.** A minimal client that has no routing behaviour reports
 the redirect to its caller and stops; it must not silently return an empty answer.
