@@ -1039,8 +1039,9 @@ routes are marked so, and neither is an oversight to be relaxed.
 | GET | `/health` | open | 200 / 503 | json |
 | GET | `/ready` | open | 200 / 503 | json |
 | GET | `/metrics` | open | 200 | `text/plain; version=0.0.4` |
-| GET | `/backup` | session | 200 | octet-stream |
-| GET | `/backup?from=<u64>` | session | 200 | octet-stream |
+| GET | `/backup` | session | 200 | octet-stream — a state snapshot (since node 0.18.0-beta; the whole log before it) |
+| GET | `/backup?as=log` | session | 200 | octet-stream — the whole log (since node 0.18.0-beta) |
+| GET | `/backup?from=<u64>` | session | 200 | octet-stream — the log from that position; `1` is the whole log |
 | GET | `/backup?as=state` | session | 200 | octet-stream — a state snapshot (since node 0.16.0-beta) |
 | GET | `/backup?as=script` | session | 200 | octet-stream — the state as TessariQL text (since node 0.16.0-beta) |
 | POST | `/session` | basic | 200 | json — the token (§5.8) |
@@ -1084,7 +1085,7 @@ Notes a client implementer needs:
   request is a `404`. A client MUST NOT probe `/`; use `/health`, which exists in
   every build.
 - **`GET /backup` on a store with no `DEFINE USER` is unauthenticated** and
-  returns the whole log. This is the open-store rule at its loudest, not a defect.
+  returns the whole store. This is the open-store rule at its loudest, not a defect.
   A client's documentation should say so.
 - The three operational routes take no credential deliberately: a probe or a
   scraper that needs one is a probe nobody configures.
@@ -1217,8 +1218,9 @@ target a client must parse out of prose is not a redirect. The wire form is 3.12
 Every response carries `Content-Length`. A server implementing this protocol
 **MUST** declare the length of every response body, and **MUST NOT** use
 `Transfer-Encoding: chunked` on any route. This includes `GET /backup`, the one
-route whose body has no small upper bound: the log is materialised and its length
-declared, rather than streamed.
+route whose body has no small upper bound: its length is declared rather than
+streamed — a node from 0.18.0-beta writes a snapshot aside and sends it with its
+length, and the log and the script are materialised.
 
 A client **MUST** refuse a response whose framing it does not recognise, with a
 named error, rather than attempting to read it. Guessing at an unrecognised
@@ -1234,9 +1236,9 @@ an unresponsive server.
 
 Two consequences an implementer should plan for rather than discover:
 
-- `GET /backup` returns the whole log in one response, so a client's memory
-  ceiling for that route is the size of the log. There is no resumption and no
-  range support in this version.
+- `GET /backup` returns the whole backup — a snapshot from node 0.18.0-beta, the
+  log before it — in one response, so a client's memory ceiling for that route is
+  its size. There is no resumption and no range support in this version.
 - `HEAD` costs what `GET` costs on the server (section 5.1), and now also costs
   the caller a decision: it saves transfer, not work.
 
@@ -2079,13 +2081,14 @@ tests passing, and only the byte-level comparison caught it.
   does not affect a client — but a client author who tries to build one into a
   statement will find out the hard way, so it is stated here.
 - **`Content-Length` on every response constrains `GET /backup`.** Section 5.3
-  requires a declared length on every route, and the node satisfies it by
-  materialising the whole log — measured at a small store and again at a
-  non-trivial one. That is a real ceiling: a store whose log outgrows a
-  comfortable response would need either streaming, which this version forbids,
-  or a range facility, which it does not have. Whether `/backup` gains one is an
-  open product decision, and it is a **version** decision rather than a quiet
-  one, which is why clients are required to refuse unrecognised framing loudly.
+  requires a declared length on every route. From node 0.18.0-beta the default
+  answer is a snapshot, which the node writes to a temporary file and sends with
+  its length, so the node's memory no longer grows with the store; the cost moved
+  to the node's disk and to a wait before the first byte. The log and the script
+  are still materialised. Streaming would remove the wait and the disk, and this
+  version forbids it: whether `/backup` gains it is an open product decision, and
+  it is a **version** decision rather than a quiet one, which is why clients are
+  required to refuse unrecognised framing loudly.
 
 - **The bucket listing is settled — shape, refusal and status — and this entry
   records that it once was not.** The route used to answer a statement result
