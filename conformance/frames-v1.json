@@ -1,0 +1,67 @@
+{
+  "protocol_minor": 1,
+  "what_this_is": "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` (epoch as decimal text, node as hex), and refuses each case carrying `malformed` as a malformed frame rather than reading a meaning into it.",
+  "generated_by": "generate_frames.py",
+  "elsewhere": [
+    {
+      "name": "a-write-sent-to-its-leader",
+      "body_hex": "000102030405060708090a0b0c0d0e0f0000000000000007010000000e622e6578616d706c653a39303830",
+      "decoded": {
+        "node": "000102030405060708090a0b0c0d0e0f",
+        "epoch": "7",
+        "settlement": "settled",
+        "endpoint": "b.example:9080"
+      }
+    },
+    {
+      "name": "a-read-sent-for-this-request-only",
+      "body_hex": "000102030405060708090a0b0c0d0e0f0000000000000007020000000e622e6578616d706c653a39303830",
+      "decoded": {
+        "node": "000102030405060708090a0b0c0d0e0f",
+        "epoch": "7",
+        "settlement": "transient",
+        "endpoint": "b.example:9080"
+      }
+    },
+    {
+      "name": "an-epoch-above-two-to-the-63",
+      "body_hex": "fffffffffffffffffffffffffffffffffffffffffffffffe010000000b5b3a3a315d3a3437393136",
+      "decoded": {
+        "node": "ffffffffffffffffffffffffffffffff",
+        "epoch": "18446744073709551614",
+        "settlement": "settled",
+        "endpoint": "[::1]:47916"
+      }
+    },
+    {
+      "name": "an-address-in-utf-8",
+      "body_hex": "00000000000000000000000000000000000000000000000102000000126ec3b864652e6578616d706c653a39303830",
+      "decoded": {
+        "node": "00000000000000000000000000000000",
+        "epoch": "1",
+        "settlement": "transient",
+        "endpoint": "nøde.example:9080"
+      }
+    },
+    {
+      "name": "settlement-zero",
+      "body_hex": "000102030405060708090a0b0c0d0e0f0000000000000007000000000e622e6578616d706c653a39303830",
+      "malformed": "zero is what a zeroed buffer holds, and is unassigned"
+    },
+    {
+      "name": "settlement-three",
+      "body_hex": "000102030405060708090a0b0c0d0e0f0000000000000007030000000e622e6578616d706c653a39303830",
+      "malformed": "a settlement byte is 1 or 2, never a third meaning"
+    },
+    {
+      "name": "cut-inside-the-node",
+      "body_hex": "00010203040506070809",
+      "malformed": "the body ends inside the node"
+    },
+    {
+      "name": "cut-inside-the-endpoint",
+      "body_hex": "000102030405060708090a0b0c0d0e0f0000000000000007010000000e622e6578616d706c653a39",
+      "malformed": "the endpoint is shorter than its length"
+    }
+  ]
+}

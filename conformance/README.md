@@ -190,6 +190,15 @@ field called `password` is reachable.
 the store frames set its first passphrase, change it and are refused where the corpus says, every statement case runs,
 and the frames aimed at one vault seal, unseal and rekey a vault the setup declared with its own passphrase.
 
+## The sixth corpus: `frames-v1.json`
+
+The `Elsewhere` body of protocol §3.12 — the redirect, which is the one frame a
+client must act on rather than report. Each `elsewhere` case's `body_hex` decodes to
+exactly its `decoded` (node as hex, epoch as decimal text, because an epoch is a
+`u64` and one case sits above 2⁶³), and each case carrying `malformed` is refused as
+a malformed frame: a settlement byte of 0 or 3, and a body cut inside the node or
+inside the endpoint.
+
 ## Regenerating
 
 ```sh
