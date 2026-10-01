@@ -658,11 +658,17 @@ cannot know it was safe to repeat.
 
 Sent only by a node whose peer greeted with `minor ≥ 1` (2.3). Answers a request
 in place of `Answer` or `Refusal`, and means: *this node did not run your request,
-and the node that should is at this address.* Two requests earn one (since node
-`0.20.0-beta`; before it, reads only):
+and the node that should is at this address.* Three requests earn one (since node
+`0.20.0-beta`; before it, bounded reads only):
 
 - a **read** whose `STALENESS` or `ANSWERED BY LEADER` this node cannot meet and a
   peer can — `transient`;
+- a request a node holding **part of a split table** cannot answer from its part
+  or gather — a read inside a transaction, under `VERSION`, a join side, the read
+  an `UPDATE` or `DELETE` makes — sent to a member holding the whole table that
+  the node has heard serving — `transient`, because the same read outside a
+  transaction is one this node gathers itself. With no such member it is a
+  `Refusal`;
 - a **write** into a range another node leads — `settled`, because it names a
   leadership, which holds until its epoch is superseded. A write spanning two
   leaders' ranges is a `Refusal` (`SpansLeaderships`): no single node can take it.
