@@ -657,8 +657,29 @@ cannot know it was safe to repeat.
 ### 3.12 Elsewhere body — a redirect, which is not a failure
 
 Sent only by a node whose peer greeted with `minor ≥ 1` (2.3). Answers a request
-in place of `Answer` or `Refusal`, and means: *this node did not run your read,
-and the node that should is at this address.*
+in place of `Answer` or `Refusal`, and means: *this node did not run your request,
+and the node that should is at this address.* Two requests earn one (since node
+`0.20.0-beta`; before it, reads only):
+
+- a **read** whose `STALENESS` or `ANSWERED BY LEADER` this node cannot meet and a
+  peer can — `transient`;
+- a **write** into a range another node leads — `settled`, because it names a
+  leadership, which holds until its epoch is superseded. A write spanning two
+  leaders' ranges is a `Refusal` (`SpansLeaderships`): no single node can take it.
+
+**It is sent only when nothing in the request has taken effect.** A client follows
+a redirect by sending the same request to the named node, and a script is not a
+transaction: in `CREATE …; SELECT … STALENESS 1s` the `CREATE` has committed before
+the read is redirected. A node that committed anything while running the request —
+a write outside a transaction, or a `COMMIT` — answers with the `Refusal` instead.
+A write refused at its `COMMIT` has rolled back with its transaction, so a whole
+`BEGIN … COMMIT` sent to the wrong leader is redirected. Statements that change
+nothing in the store (`USE`, reads) are safe to repeat at the named node.
+
+**`endpoint` is where a client reaches that node** when its member row declares it
+(`DEFINE REPLICA … CLIENTS AT '<host:port>'`); otherwise it is the row's own
+address, which is the peer door in a cluster run with peer credentials and not
+something a client can speak to — the reason to declare `CLIENTS AT`.
 
 ```
 node         16 bytes — who to expect there
@@ -702,6 +723,9 @@ deliberately unassigned, because zero is what a truncated or zeroed buffer holds
 and giving it a meaning would let corruption decode as a value.
 
 **On the HTTP surface** the same answer is `307` carrying `Location` (section 5).
+`Location` is the named node's HTTP base (`DEFINE REPLICA … HTTP AT '<url>'`)
+followed by the request's own path, or the row's address when no base is declared.
+A request that had already committed something answers `409` instead.
 `307` and not `302`, because only the temporary-redirect status promises that the
 method and the body survive the hop, and a script a client quietly dropped on the
 way to the other node is a worse outcome than a refusal.
@@ -1198,6 +1222,8 @@ Notes a client implementer needs:
 | a store-level conflict — retriable after a change | 409 json |
 | encoding or substrate failure | 500 json |
 | a read this node cannot answer within the staleness bound it was given, where a peer can | **307 + `Location`** json |
+| a write into a range another node leads (node `0.20.0-beta`), nothing in the script having committed | **307 + `Location`** json |
+| either of the two above, after part of the script had already committed | 409 json |
 
 `401` and `403` are different and a client must keep them apart: `401` means sign
 in, `403` means the grants do not cover this and signing in again will never help.
