@@ -69,8 +69,8 @@ but queries do not" must be diagnosable.
 
 ### 1.1 TLS
 
-From node `0.21.0-beta` a node given a certificate speaks **TLS 1.2 or 1.3 on both
-ports and nothing else** — the wire port, HTTP, and every WebSocket on it (3.13). There is no mixed port: a plaintext greeting sent to a TLS port fails the
+From node `0.21.0-beta` a node given a certificate speaks **TLS 1.3 on both ports
+and nothing else** — the wire port, HTTP, and every WebSocket on it (3.13). There is no mixed port: a plaintext greeting sent to a TLS port fails the
 handshake and never reaches the protocol. Inside TLS **every byte is the protocol
 as this document states it**, so TLS changes no version (2.3) and no frame.
 
@@ -89,7 +89,9 @@ A client that speaks TLS:
   certificate is talking to whoever answered;
 - **MUST NOT** fall back to plaintext when a handshake fails, because the
   credential it would then send has crossed the network in the clear;
-- **SHOULD** offer `http/1.1` by ALPN on HTTP and nothing on the wire port.
+- **SHOULD** offer `http/1.1` by ALPN on HTTP and nothing on the wire port;
+- needs TLS 1.3: a node offers no earlier version, so a client limited to 1.2
+  fails the handshake.
 
 A handshake failure is a transport failure (section 6, `Io`) carrying the TLS
 library's own reason — an untrusted issuer, an expired certificate, a name the
