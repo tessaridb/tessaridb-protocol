@@ -67,6 +67,37 @@ configurable and separately reportable, because they are two ports: a firewall
 rule or a partial bind can leave one reachable and the other not, and "files work
 but queries do not" must be diagnosable.
 
+### 1.1 TLS
+
+From node `0.21.0-beta` a node given a certificate speaks **TLS 1.3 on both ports
+and nothing else** — the wire port, HTTP, and every WebSocket on it (3.13). There is no mixed port: a plaintext greeting sent to a TLS port fails the
+handshake and never reaches the protocol. Inside TLS **every byte is the protocol
+as this document states it**, so TLS changes no version (2.3) and no frame.
+
+A node that is part of a cluster refuses to serve its clients in the clear unless
+its operator chose to; a single node may still serve in the clear. A client
+therefore cannot assume either and is **configured** for one or the other.
+
+A client that speaks TLS:
+
+- **MUST** verify the node's certificate chain against the trust it was given and
+  the node's name against the **host part of the address** it dialled — a DNS
+  name, or an IP address checked against the certificate's IP entries;
+- **MUST** accept that trust as a PEM file of one or more certificates, and
+  **SHOULD** also accept the platform's own certificate store;
+- **MUST NOT** offer a way to skip either check — a client that accepts any
+  certificate is talking to whoever answered;
+- **MUST NOT** fall back to plaintext when a handshake fails, because the
+  credential it would then send has crossed the network in the clear;
+- **SHOULD** offer `http/1.1` by ALPN on HTTP and nothing on the wire port;
+- needs TLS 1.3: a node offers no earlier version, so a client limited to 1.2
+  fails the handshake.
+
+A handshake failure is a transport failure (section 6, `Io`) carrying the TLS
+library's own reason — an untrusted issuer, an expired certificate, a name the
+certificate does not carry. It is **not retried** against the same node: nothing
+about the next attempt would differ.
+
 ---
 
 ## 2. Two primitive sets — read this before section 3 or 4
@@ -289,9 +320,10 @@ Credentials are optional because a store with no users declared is **open** and
 runs anything, which is what keeps an empty one usable. A closed store's refusal
 comes from the session, not from a second rule in the client.
 
-> There is **no TLS** on this protocol. Credentials travel as given. This belongs
-> on a protected network or behind something that terminates TLS. A client must
-> say so in its own documentation rather than leave it to be discovered.
+> Credentials travel inside the transport. Over TLS (1.1) they are encrypted; to a
+> node serving in the clear they travel as given, which belongs on a protected
+> network. A client must say which it is doing in its own documentation rather
+> than leave it to be discovered.
 
 ### 3.5 Answer body
 
@@ -805,8 +837,8 @@ A store with **no users** is open over this route as it is over every other.
 | a text message | close `1003` |
 | a message over 16 MiB + 5 bytes | close `1009` |
 
-There is no TLS on this route either. `wss://` is a TLS-terminating proxy in front of the HTTP port; a page served over
-`https://` cannot open `ws://` at all.
+On a node serving TLS (1.1) this route is `wss://` to the HTTP port itself; on one serving in the clear, `wss://` is a
+TLS-terminating proxy in front of it. A page served over `https://` cannot open `ws://` at all.
 
 A browser's `WebSocket` has no read-side flow control: a subscriber that stops consuming changes accumulates them in
 the page's memory rather than filling a socket, so the node's 30-second drop never fires for it. A client says so.
@@ -1084,7 +1116,9 @@ time proving who it is than the node spends answering. That is what the token is
 for, and a client that never opens a session is slower than this protocol
 intends by more than an order of magnitude.
 
-There is no TLS here either.
+Over TLS (1.1) a password and a token are encrypted with everything else; to a
+node serving in the clear they are not, which is a reason to prefer a token
+there as well.
 
 ### 5.1 Routes
 
@@ -1863,8 +1897,8 @@ whose length varied would leak a fact about its own bytes.
 
 A client **SHOULD** hold it with the same care as the password it replaces. It is
 a bearer credential in the literal sense — anything that has it is the user until
-it expires — and there is no TLS on this protocol, so it travels in the clear
-exactly as the password did.
+it expires — and it travels exactly as the password did: encrypted over TLS
+(1.1), in the clear to a node that serves in the clear.
 
 #### Lifetime, and the four ways it ends
 
