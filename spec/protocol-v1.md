@@ -74,9 +74,12 @@ and nothing else** — the wire port, HTTP, and every WebSocket on it (3.13). Th
 handshake and never reaches the protocol. Inside TLS **every byte is the protocol
 as this document states it**, so TLS changes no version (2.3) and no frame.
 
-A node that is part of a cluster refuses to serve its clients in the clear unless
-its operator chose to; a single node may still serve in the clear. A client
-therefore cannot assume either and is **configured** for one or the other.
+Client TLS is the operator's choice on every node (from node `0.23.0-beta`; until
+then a node that was part of a cluster refused the clear unless told otherwise): a
+node given no certificate serves its clients in the clear, and one started to
+require TLS refuses to start without a certificate. A client therefore cannot
+assume either and is **configured** for one or the other. The peer link between
+nodes is outside this document and is always mutually authenticated TLS.
 
 A client that speaks TLS:
 
