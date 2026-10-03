@@ -424,6 +424,8 @@ refuses an unlisted kind is non-conforming by the paragraph above.
 | `nearing-ceiling` | a held read is close to the record ceiling past which it is refused rather than shortened |
 | `gathered` | shards of a split table were read from their leaders on other nodes, each when asked — complete, but not one snapshot |
 | `lapsed` | messages of a topic passed retention before this reader reached them, and will not be given to anyone |
+| `filled` | a series read answered windows nothing was written in, because the statement said `FILL`; each holds a count of `0` |
+| `path` | the records are a shortest path, start to end; the message says how many steps it took and what they cost |
 
 **The `only` flag sits after the notes and is the newest field.** It is `1` when
 the statement wrote `ONLY` — an assertion by its author that at most one record
@@ -1683,7 +1685,7 @@ not, and the difference matters because they look alike in the same object.
 person and **MUST NOT** be branched on — the same rule the refusal body follows
 in 5.4. The kinds a node sends today are the ones listed in 3.5 — `fell-back`,
 `approximate`, `compared-across-kinds`, `cursor-walked`, `subquery-ceiling`,
-`nearing-ceiling`, `gathered` and `lapsed` — and the list is open. A client **MUST** carry an unrecognised kind
+`nearing-ceiling`, `gathered`, `lapsed`, `filled` and `path` — and the list is open. A client **MUST** carry an unrecognised kind
 through to its caller rather than dropping it, because a note it does not know is
 still the store reporting that the answer is qualified.
 
