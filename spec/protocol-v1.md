@@ -429,6 +429,7 @@ refuses an unlisted kind is non-conforming by the paragraph above.
 | `lapsed` | messages of a topic passed retention before this reader reached them, and will not be given to anyone |
 | `filled` | a series read answered windows nothing was written in, because the statement said `FILL`; each holds a count of `0` |
 | `path` | the records are a shortest path, start to end; the message says how many steps it took and what they cost |
+| `needs-rebuild` | a full-text index this read would use was built by another tokenizer than the node's, so it was not answered from — or, for a search member, was read and may miss terms — until `REBUILD INDEX` (from engine `0.26.0-beta`) |
 
 **The `only` flag sits after the notes and is the newest field.** It is `1` when
 the statement wrote `ONLY` — an assertion by its author that at most one record
@@ -1688,7 +1689,7 @@ not, and the difference matters because they look alike in the same object.
 person and **MUST NOT** be branched on — the same rule the refusal body follows
 in 5.4. The kinds a node sends today are the ones listed in 3.5 — `fell-back`,
 `approximate`, `compared-across-kinds`, `cursor-walked`, `subquery-ceiling`,
-`nearing-ceiling`, `gathered`, `lapsed`, `filled` and `path` — and the list is open. A client **MUST** carry an unrecognised kind
+`nearing-ceiling`, `gathered`, `lapsed`, `filled`, `path` and `needs-rebuild` — and the list is open. A client **MUST** carry an unrecognised kind
 through to its caller rather than dropping it, because a note it does not know is
 still the store reporting that the answer is qualified.
 
