@@ -1174,6 +1174,7 @@ routes are marked so, and neither is an oversight to be relaxed.
 | GET | `/` | open | 200 | `text/html` — console, build-conditional |
 | GET | `/console.css` | open | 200 | `text/css` — build-conditional |
 | GET | `/console.js` | open | 200 | `text/javascript` — build-conditional |
+| GET | `/favicon.svg` | open | 200 | `image/svg+xml` — build-conditional |
 
 Notes a client implementer needs:
 
