@@ -1,6 +1,6 @@
 {
-  "protocol_minor": 1,
-  "what_this_is": "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` (epoch as decimal text, node as hex), and refuses each case carrying `malformed` as a malformed frame rather than reading a meaning into it.",
+  "protocol_minor": 3,
+  "what_this_is": "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` (epoch as decimal text, node as hex), and refuses each case carrying `malformed` as a malformed frame rather than reading a meaning into it. And for the Refusal body (tag 3), protocol §3.6 from minor 3: each `refusal` case's `body_hex` reads as its `decoded` class — a word from the table, `unknown` for byte 0, or null when the body carries no class — and message.",
   "generated_by": "generate_frames.py",
   "elsewhere": [
     {
@@ -62,6 +62,120 @@
       "name": "cut-inside-the-endpoint",
       "body_hex": "000102030405060708090a0b0c0d0e0f0000000000000007010000000e622e6578616d706c653a39",
       "malformed": "the endpoint is shorter than its length"
+    }
+  ],
+  "refusal": [
+    {
+      "name": "class-invalid",
+      "body_hex": "01746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "invalid",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-unauthenticated",
+      "body_hex": "02746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "unauthenticated",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-forbidden",
+      "body_hex": "03746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "forbidden",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-throttled",
+      "body_hex": "04746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "throttled",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-elsewhere",
+      "body_hex": "05746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "elsewhere",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-retry",
+      "body_hex": "06746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "retry",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-conflict",
+      "body_hex": "07746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "conflict",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-unavailable",
+      "body_hex": "08746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "unavailable",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-internal",
+      "body_hex": "09746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "internal",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "class-zero-is-unknown",
+      "body_hex": "00746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": "unknown",
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "a-first-byte-above-nine-is-words",
+      "body_hex": "0a746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": null,
+        "message": "\nthe table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "words-only-from-an-older-node",
+      "body_hex": "746865207461626c652027757365727327206973206e6f74206465636c61726564202861742031342e2e313929",
+      "decoded": {
+        "class": null,
+        "message": "the table 'users' is not declared (at 14..19)"
+      }
+    },
+    {
+      "name": "a-class-and-no-words",
+      "body_hex": "06",
+      "decoded": {
+        "class": "retry",
+        "message": ""
+      }
+    },
+    {
+      "name": "words-in-utf-8",
+      "body_hex": "03616363c3a873207265667573c3a9",
+      "decoded": {
+        "class": "forbidden",
+        "message": "accès refusé"
+      }
     }
   ]
 }

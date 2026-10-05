@@ -10,7 +10,7 @@ node speaks**, specified so that a client can be written in any language
 
 [![status](https://img.shields.io/badge/status-in%20development-D98E33?style=flat-square)](#status)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-6B5FD1?style=flat-square)](LICENSE)
-[![version](https://img.shields.io/badge/protocol-v1.2-6B5FD1?style=flat-square)](spec/protocol-v1.md)
+[![version](https://img.shields.io/badge/protocol-v1.3-6B5FD1?style=flat-square)](spec/protocol-v1.md)
 [![corpus](https://img.shields.io/badge/corpus-143%20cases-6B5FD1?style=flat-square)](conformance)
 
 </div>
@@ -49,7 +49,7 @@ So the specification comes first and lives on its own:
 
 | path | what it is |
 |---|---|
-| `spec/protocol-v1.md` | the normative specification of protocol version 1.2 |
+| `spec/protocol-v1.md` | the normative specification of protocol version 1.3 |
 | `spec/query-builder-v1.md` | the rendering contract for a query builder, version 1.1 — **language, not protocol**, and separate for that reason (§6) |
 | `spec/consumer-v1.md` | the contract for consuming a topic with a callback as a member of a consumer group — the statements sent, auto and manual acknowledgement, waiting, refusals; **language, not protocol** |
 | `spec/cache-v1.md` | the contract for a space used as a cache, a counter and a lock — the statements each call sends, `getOrSet`, the lease; **language, not protocol** |

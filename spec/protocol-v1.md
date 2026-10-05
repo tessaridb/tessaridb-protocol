@@ -1,7 +1,8 @@
 # TessariDB protocol — specification for client implementers
 
-**Protocol version 1.2.** Drafted 2026-08-24; `1.1` on 2026-09-14, when the
-redirect frame arrived; `1.2` with node `0.17.0-beta`, when the vault frame did. The header said `1.0` until 2026-09-17 while §2.3 and
+**Protocol version 1.3.** Drafted 2026-08-24; `1.1` on 2026-09-14, when the
+redirect frame arrived; `1.2` with node `0.17.0-beta`, when the vault frame did;
+`1.3` with node `0.30.0-beta`, when a refusal began carrying its class. The header said `1.0` until 2026-09-17 while §2.3 and
 §3.3 already described `minor = 1` — a version sentence that disagrees with the
 document under it is worse than none, because a client implementer reads the
 first one.
@@ -204,6 +205,12 @@ other way: a client sends it only to a node whose greeting carried `minor >= 2`,
 and tells its caller *this node does not have the vault frame* otherwise, before
 sending anything. An older node would close the connection on the unknown kind,
 which reads as a network fault rather than as the version gap it is.
+
+`minor = 3` changes no frame kind; it changes the **Refusal body** (3.6), since node
+`0.30.0-beta`. A node starts the refusal it sends a client whose greeting carried
+`minor >= 3` with one class byte, and sends a client below 3 the words alone, as
+before — the body has no length prefix, so an older client would read the byte as
+the first character of the message. The sender's obligation again.
 
 ---
 
@@ -560,8 +567,38 @@ second spelling authority that can disagree with the store's.
 
 ### 3.6 Refusal body
 
-The body is the store's own message, as UTF-8 text, with **no length prefix** —
-it is the whole body.
+To a client whose greeting carried `minor >= 3`, from node `0.30.0-beta`:
+
+```
+u8      class   0-9, see the table below
+bytes   the store's own message, UTF-8, to the end of the body
+```
+
+To an older client, and from an older node, the body is the message alone, with
+**no length prefix** — it is the whole body.
+
+A client of `minor >= 3` reads the first byte: **`0`–`9` is a class, anything else
+is the first byte of a message with no class**. A message is UTF-8 prose and never
+starts with a byte that low, which is what lets one reader take both shapes — an
+older node's, and the refusal a node sends at the door before any greeting.
+
+| byte | class | what the caller should do |
+|---|---|---|
+| 0 | *unknown* | the node could not class it (a peer from before 1.3 answered); treat as not retriable |
+| 1 | `invalid` | fix the request; repeating it unchanged cannot succeed |
+| 2 | `unauthenticated` | sign in, or sign in again |
+| 3 | `forbidden` | stop; signing in again will not help |
+| 4 | `throttled` | wait, then repeat |
+| 5 | `elsewhere` | send it to the node the message names |
+| 6 | `retry` | run the transaction again from its start |
+| 7 | `conflict` | re-read: the state the request assumed is not the state there is |
+| 8 | `unavailable` | try later or another node; the request itself was fine |
+| 9 | `internal` | report it: a defect, damaged data, or a format the node cannot read |
+
+The set is closed for every 1.x: a refusal the store adds later joins one of these.
+**Branch on the class, never on the message**, which is prose and changes between
+releases. The HTTP surface carries the same class as the word in an error body's
+`"code"`. Vectors: `conformance/frames-v1.json`, key `refusal`.
 
 Carried through **verbatim**. The session already writes messages that name the
 place in the script, and a client rewording them becomes a second author for one
@@ -1353,16 +1390,22 @@ Two consequences an implementer should plan for rather than discover:
 
 Where section 5.1 says `json`, the shapes are these. All are objects.
 
-**Every refusal** — every row of section 5.2 answered `json` — carries a single
-field:
+**Every refusal** — every row of section 5.2 answered `json` — carries two
+fields (the second from node `0.30.0-beta`):
 
 ```json
-{"error": "a sentence naming what was refused"}
+{"error": "a sentence naming what was refused", "code": "conflict"}
 ```
 
+`code` is the refusal's class, one of the nine words of section 3.6, and is what a
+client branches on: the status is coarser — `retry` and `conflict` share `409` —
+and the status follows from the class (`invalid` 400, `unauthenticated` 401,
+`forbidden` 403, `throttled` 429, `elsewhere` 307, `retry` and `conflict` 409,
+`unavailable` 503, `internal` 500). From an older node there is no `code`; read the
+status as before.
+
 The sentence is meant for a person. It is **not** a stable identifier and a
-client **MUST NOT** branch on its text; branch on the status code, which is what
-section 5.2 enumerates. The sentence frequently embeds the caller's own input —
+client **MUST NOT** branch on its text. The sentence frequently embeds the caller's own input —
 a name, a path, a byte range — and is therefore arbitrary text.
 
 **`GET /health` and `GET /ready`** answer one of three shapes, and the field sets
