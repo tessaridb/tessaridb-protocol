@@ -212,6 +212,14 @@ which reads as a network fault rather than as the version gap it is.
 before — the body has no length prefix, so an older client would read the byte as
 the first character of the message. The sender's obligation again.
 
+`minor = 4` adds a **condition** to the Subscribe body (3.7) and introduces **`Progress` (tag 37)** (3.15), since node
+`0.33.0-beta`. Both directions are gated:
+
+- a client sends a condition only to a node whose greeting carried `minor >= 4`, and otherwise tells its caller the
+  node cannot narrow a feed. An older node reads past the bytes and delivers every change, which is the wrong answer,
+  and a silent one;
+- a node sends `Progress` only to a client whose greeting carried `minor >= 4`.
+
 ---
 
 ## 3. The wire protocol
@@ -285,9 +293,10 @@ cannot be asked about after the fact by a client of a different build.
 | 5 | Change | node → client | 3.8 |
 | 13 | Elsewhere | node → client | 3.12 |
 | 17 | Vault | client → node | 3.14 |
+| 37 | Progress | node → client | 3.15 |
 
-**Thirteen and seventeen, and not six and seven.** Tags 6 through 12 and 14 through 16 are taken by the
-link nodes use to talk to each other, which shares this one byte and is not part
+**Thirteen, seventeen and thirty-seven, and not six, seven and eight.** Tags 6 through 12, 14 through 16 and 18
+through 36 are taken by the link nodes use to talk to each other, which shares this one byte and is not part
 of the client protocol. A client never sends one and never receives one, and a node that
 receives a client frame on a peer connection — or the reverse — treats it as an
 unknown frame.
@@ -302,7 +311,7 @@ that ignores what it does not understand is one where a version mismatch looks
 like silence.
 
 A client that receives `Request`, `Subscribe`, `Vault`, or — on a connection that
-has not subscribed — `Change`, treats it as an unknown frame.
+has not subscribed — `Change` or `Progress`, treats it as an unknown frame.
 
 ### 3.4 Request body
 
@@ -436,6 +445,7 @@ refuses an unlisted kind is non-conforming by the paragraph above.
 | `lapsed` | messages of a topic passed retention before this reader reached them, and will not be given to anyone |
 | `filled` | a series read answered windows nothing was written in, because the statement said `FILL`; each holds a count of `0` |
 | `path` | the records are a shortest path, start to end; the message says how many steps it took and what they cost |
+| `estimated` | an `approx_distinct` or `approx_quantile` answered: the message names the fold, the method (`hll-14`, `ddsketch`) and the declared relative error (from engine `0.33.0-beta`) |
 | `needs-rebuild` | a full-text index this read would use was built by another tokenizer than the node's, so it was not answered from — or, for a search member, was read and may miss terms — until `REBUILD INDEX` (from engine `0.26.0-beta`) |
 
 **The `only` flag sits after the notes and is the newest field.** It is `1` when
@@ -614,11 +624,27 @@ u64     from — the first log position to read, INCLUSIVE
 u8      table flag: 0 = every table in the session's database, 1 = one table
         if 1:
 text      the table name
-text    cursor — OPTIONAL, and only ever last: where to resume a feed over a
-        split table
+text    cursor — OPTIONAL: where to resume a feed over a split table
+        from minor 4, OPTIONAL and only after the cursor:
+text      condition — TessariQL, without `WHERE`
+bytes     its parameters — ONE value encoded per section 4: an object of
+          name → value
 ```
 
-Any other flag byte is malformed.
+Any other flag byte is malformed. **A condition needs the cursor's place filled**, so a body that carries one writes
+the cursor as empty text when there is none; an empty cursor is never one a node hands out.
+
+**A condition narrows a feed over one table** (a condition with the table flag `0` is refused), from minor 4:
+
+- A write whose value satisfies it is sent as it is.
+- A write that does not, and a removal, are sent **as a removal** when the record satisfied it just before the
+  change. A mirror applying the feed therefore holds exactly the matching records, including dropping one that
+  left.
+- The condition is judged on the record **as the subscriber may see it**. One naming a field they may not see is
+  refused, at the start and on the first round after a grant takes the field away.
+- Its parameters are **bound after the node reads the condition**, as a request's are (3.4), so a value can never
+  become syntax.
+- A feed that skipped changes says how far it read (3.15).
 
 **The cursor is the newest field and travels only when it is sent.** A body that
 ends after the table is the frame every earlier client sends, and it means what
@@ -942,6 +968,26 @@ a loop.
 
 The status and the listing of a vault's record ids are also statements (`INFO FOR SEAL`, `INFO FOR SEAL OF v`,
 `INFO FOR VAULT v RECORDS`) and need no frame; a client may send them as Requests.
+
+### 3.15 Progress body — how far a narrowed feed read
+
+```
+u64     sequence — the last change the feed read and did not send
+text    cursor — OPTIONAL, and only ever last: on a feed over a split table,
+        where to resume after it
+```
+
+Sent from minor 4 on a feed that named a condition, and only there. It is sent when the feed skipped changes and sent
+nothing for a short while, at most once in that while (the node's patience between rounds, 250 ms today). Without it,
+a subscriber whose condition matched nothing for a long run would hold a resume point far behind the log, and could
+find it pruned.
+
+A subscriber stores it exactly as it stores a change's position: it resumes at **`sequence + 1`**, or from the
+`cursor` on a split table, and loses nothing and repeats nothing. Vectors: `conformance/frames-v1.json`, `progress`.
+
+On `GET /watch` (5.1) the same thing is a line `{"progress": <sequence>, "cursor": <text>?}`, and the request names
+its condition as `"condition"` with `"parameters"` — an object of names to TessariQL literals, read as `POST /script`
+reads its parameters (5.5).
 
 ---
 
@@ -1733,7 +1779,7 @@ not, and the difference matters because they look alike in the same object.
 person and **MUST NOT** be branched on — the same rule the refusal body follows
 in 5.4. The kinds a node sends today are the ones listed in 3.5 — `fell-back`,
 `approximate`, `compared-across-kinds`, `cursor-walked`, `subquery-ceiling`,
-`nearing-ceiling`, `gathered`, `lapsed`, `filled`, `path` and `needs-rebuild` — and the list is open. A client **MUST** carry an unrecognised kind
+`nearing-ceiling`, `gathered`, `lapsed`, `filled`, `path`, `needs-rebuild` and `estimated` — and the list is open. A client **MUST** carry an unrecognised kind
 through to its caller rather than dropping it, because a note it does not know is
 still the store reporting that the answer is qualified.
 

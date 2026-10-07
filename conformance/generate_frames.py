@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Generate the frame conformance corpus: the `Elsewhere` body of protocol §3.12
-and the classed `Refusal` body of §3.6.
+"""Generate the frame conformance corpus: the `Elsewhere` body of protocol §3.12,
+the classed `Refusal` body of §3.6 and the `Progress` body of §3.15.
 
 A **second implementation** of that body, written from the specification alone.
 A redirect is the one frame a client must act on rather than report, and an
@@ -90,6 +90,24 @@ def refusal_cases():
     return cases
 
 
+def progress_body(sequence, cursor):
+    """§3.15: sequence (u64, big-endian), then the cursor (u32-length-prefixed
+    UTF-8) only when there is one."""
+    body = struct.pack(">Q", sequence)
+    if cursor is not None:
+        raw = cursor.encode("utf-8")
+        body += struct.pack(">I", len(raw)) + raw
+    return body
+
+
+def progress_case(name, sequence, cursor):
+    return {
+        "name": name,
+        "body_hex": progress_body(sequence, cursor).hex(),
+        "decoded": {"sequence": str(sequence), "cursor": cursor},
+    }
+
+
 def malformed_case(name, body, why):
     return {"name": name, "body_hex": body.hex(), "malformed": why}
 
@@ -98,7 +116,7 @@ def build_corpus():
     node = bytes(range(16))
     good = elsewhere_body(node, 7, 1, "b.example:9080")
     return {
-        "protocol_minor": 3,
+        "protocol_minor": 4,
         "what_this_is": (
             "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming "
             "client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` "
@@ -106,7 +124,10 @@ def build_corpus():
             "`malformed` as a malformed frame rather than reading a meaning into it. "
             "And for the Refusal body (tag 3), protocol §3.6 from minor 3: each `refusal` "
             "case's `body_hex` reads as its `decoded` class — a word from the table, "
-            "`unknown` for byte 0, or null when the body carries no class — and message."
+            "`unknown` for byte 0, or null when the body carries no class — and message. "
+            "And for the Progress body (tag 37), protocol §3.15 from minor 4: each `progress` "
+            "case decodes to its `decoded` sequence (decimal text) and cursor, or is refused "
+            "as malformed."
         ),
         "generated_by": "generate_frames.py",
         "elsewhere": [
@@ -134,6 +155,17 @@ def build_corpus():
             malformed_case("cut-inside-the-endpoint", good[:-3], "the endpoint is shorter than its length"),
         ],
         "refusal": refusal_cases(),
+        "progress": [
+            progress_case("a-feed-over-one-log", 41, None),
+            progress_case("a-feed-over-a-split-table", 41, "1.1:d=12,7.2=30"),
+            progress_case("a-sequence-above-two-to-the-63", 2**64 - 2, None),
+            malformed_case("cut-inside-the-sequence", progress_body(41, None)[:5], "the body ends inside the sequence"),
+            malformed_case(
+                "cut-inside-the-cursor",
+                progress_body(41, "1.1:d=12")[:-2],
+                "the cursor is shorter than its length",
+            ),
+        ],
     }
 
 
