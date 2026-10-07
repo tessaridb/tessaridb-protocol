@@ -1,6 +1,6 @@
 {
-  "protocol_minor": 3,
-  "what_this_is": "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` (epoch as decimal text, node as hex), and refuses each case carrying `malformed` as a malformed frame rather than reading a meaning into it. And for the Refusal body (tag 3), protocol §3.6 from minor 3: each `refusal` case's `body_hex` reads as its `decoded` class — a word from the table, `unknown` for byte 0, or null when the body carries no class — and message.",
+  "protocol_minor": 4,
+  "what_this_is": "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` (epoch as decimal text, node as hex), and refuses each case carrying `malformed` as a malformed frame rather than reading a meaning into it. And for the Refusal body (tag 3), protocol §3.6 from minor 3: each `refusal` case's `body_hex` reads as its `decoded` class — a word from the table, `unknown` for byte 0, or null when the body carries no class — and message. And for the Progress body (tag 37), protocol §3.15 from minor 4: each `progress` case decodes to its `decoded` sequence (decimal text) and cursor, or is refused as malformed.",
   "generated_by": "generate_frames.py",
   "elsewhere": [
     {
@@ -176,6 +176,42 @@
         "class": "forbidden",
         "message": "accès refusé"
       }
+    }
+  ],
+  "progress": [
+    {
+      "name": "a-feed-over-one-log",
+      "body_hex": "0000000000000029",
+      "decoded": {
+        "sequence": "41",
+        "cursor": null
+      }
+    },
+    {
+      "name": "a-feed-over-a-split-table",
+      "body_hex": "00000000000000290000000f312e313a643d31322c372e323d3330",
+      "decoded": {
+        "sequence": "41",
+        "cursor": "1.1:d=12,7.2=30"
+      }
+    },
+    {
+      "name": "a-sequence-above-two-to-the-63",
+      "body_hex": "fffffffffffffffe",
+      "decoded": {
+        "sequence": "18446744073709551614",
+        "cursor": null
+      }
+    },
+    {
+      "name": "cut-inside-the-sequence",
+      "body_hex": "0000000000",
+      "malformed": "the body ends inside the sequence"
+    },
+    {
+      "name": "cut-inside-the-cursor",
+      "body_hex": "000000000000002900000008312e313a643d",
+      "malformed": "the cursor is shorter than its length"
     }
   ]
 }
