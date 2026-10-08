@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate the frame conformance corpus: the `Elsewhere` body of protocol §3.12,
-the classed `Refusal` body of §3.6 and the `Progress` body of §3.15.
+the classed `Refusal` body of §3.6, the `Progress` body of §3.15, and the
+Request body's stream byte of §3.4 with the `Part` frame of §3.16.
 
 A **second implementation** of that body, written from the specification alone.
 A redirect is the one frame a client must act on rather than report, and an
@@ -108,6 +109,29 @@ def progress_case(name, sequence, cursor):
     }
 
 
+def text(value):
+    """`text`: u32 byte-length, then that many UTF-8 bytes (§2.1)."""
+    raw = value.encode("utf-8")
+    return struct.pack(">I", len(raw)) + raw
+
+
+def request_body(script, stream):
+    """§3.4 with no credentials and no parameters, then from minor 5 the stream
+    byte — written only when set."""
+    body = text(script) + b"\x00" + struct.pack(">I", 0)
+    if stream:
+        body += b"\x01"
+    return body
+
+
+def request_case(name, script, stream):
+    return {
+        "name": name,
+        "body_hex": request_body(script, stream).hex(),
+        "decoded": {"script": script, "stream": stream},
+    }
+
+
 def malformed_case(name, body, why):
     return {"name": name, "body_hex": body.hex(), "malformed": why}
 
@@ -116,7 +140,7 @@ def build_corpus():
     node = bytes(range(16))
     good = elsewhere_body(node, 7, 1, "b.example:9080")
     return {
-        "protocol_minor": 4,
+        "protocol_minor": 5,
         "what_this_is": (
             "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming "
             "client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` "
@@ -127,7 +151,11 @@ def build_corpus():
             "`unknown` for byte 0, or null when the body carries no class — and message. "
             "And for the Progress body (tag 37), protocol §3.15 from minor 4: each `progress` "
             "case decodes to its `decoded` sequence (decimal text) and cursor, or is refused "
-            "as malformed."
+            "as malformed. "
+            "And for the Request body (tag 1), protocol §3.4 from minor 5: each `request` case "
+            "is the body a client sends for its `decoded` script and stream flag — the stream "
+            "byte appears only when set — and a node refuses a stream byte other than 0 or 1. "
+            "A `Part` (tag 38, §3.16) carries raw snapshot bytes and has no body to vector."
         ),
         "generated_by": "generate_frames.py",
         "elsewhere": [
@@ -164,6 +192,15 @@ def build_corpus():
                 "cut-inside-the-cursor",
                 progress_body(41, "1.1:d=12")[:-2],
                 "the cursor is shorter than its length",
+            ),
+        ],
+        "request": [
+            request_case("a-script-not-streamed", "BACKUP STATE;", False),
+            request_case("a-snapshot-asked-to-stream", "BACKUP STATE;", True),
+            malformed_case(
+                "a-stream-byte-of-two",
+                request_body("BACKUP STATE;", False) + b"\x02",
+                "the stream byte is 1 when present, and 0 is the same as absent",
             ),
         ],
     }

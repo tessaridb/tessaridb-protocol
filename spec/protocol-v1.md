@@ -220,6 +220,11 @@ the first character of the message. The sender's obligation again.
   and a silent one;
 - a node sends `Progress` only to a client whose greeting carried `minor >= 4`.
 
+`minor = 5` adds a **stream byte** to the Request body (3.4) and introduces **`Part` (tag 38)** (3.16), in the
+node release after `0.33.4-beta`. The client asks, so the client gates: it sends the byte only to a node whose greeting carried
+`minor >= 5`, and tells its caller the node cannot stream otherwise. A node sends `Part` only to a request that
+carried the byte, so no older client ever meets the tag.
+
 ---
 
 ## 3. The wire protocol
@@ -276,6 +281,12 @@ The ceiling applies **on the way out as well as in**. A client that would refuse
 to read a frame that size must not send one either; a peer that emits what it
 would refuse to read is running two protocols.
 
+A node whose answer would be larger therefore **refuses** it instead (3.6), class
+`invalid`, naming its size, and the connection lives; before the node release after
+`0.33.4-beta` it failed the write and closed the connection, which a client could
+only report as a truncated stream. A snapshot larger than one frame is asked for as
+a stream (3.16).
+
 Reading zero bytes **between** frames is a clean goodbye. Reading zero bytes
 **inside** a header or body is truncation and is an error.
 
@@ -294,8 +305,9 @@ cannot be asked about after the fact by a client of a different build.
 | 13 | Elsewhere | node → client | 3.12 |
 | 17 | Vault | client → node | 3.14 |
 | 37 | Progress | node → client | 3.15 |
+| 38 | Part | node → client | 3.16 |
 
-**Thirteen, seventeen and thirty-seven, and not six, seven and eight.** Tags 6 through 12, 14 through 16 and 18
+**Thirteen, seventeen, thirty-seven and thirty-eight, and not six, seven, eight and nine.** Tags 6 through 12, 14 through 16 and 18
 through 36 are taken by the link nodes use to talk to each other, which shares this one byte and is not part
 of the client protocol. A client never sends one and never receives one, and a node that
 receives a client frame on a peer connection — or the reverse — treats it as an
@@ -311,7 +323,8 @@ that ignores what it does not understand is one where a version mismatch looks
 like silence.
 
 A client that receives `Request`, `Subscribe`, `Vault`, or — on a connection that
-has not subscribed — `Change` or `Progress`, treats it as an unknown frame.
+has not subscribed — `Change` or `Progress`, or a `Part` for a request that did not
+ask to stream, treats it as an unknown frame.
 
 ### 3.4 Request body
 
@@ -325,9 +338,13 @@ u32     parameter count
         repeated `count` times:
 text      parameter name
 bytes     the value, encoded per section 4
+u8      stream — OPTIONAL, from minor 5: 1 = send the snapshot this script takes
+        as `Part` frames (3.16); written only when set
 ```
 
-Any other credentials flag byte is malformed.
+Any other credentials flag byte is malformed, and so is a stream byte other than 0 or 1. A client sends the stream
+byte only to a node whose greeting carried `minor >= 5`: an older node reads past it and answers the snapshot as a
+value. Vectors: `conformance/frames-v1.json`, `request`.
 
 **Parameter values travel in the value codec, never as text.** This is the reason
 the wire protocol exists. A value the server has to *parse* is a value that can be
@@ -988,6 +1005,27 @@ A subscriber stores it exactly as it stores a change's position: it resumes at *
 On `GET /watch` (5.1) the same thing is a line `{"progress": <sequence>, "cursor": <text>?}`, and the request names
 its condition as `"condition"` with `"parameters"` — an object of names to TessariQL literals, read as `POST /script`
 reads its parameters (5.5).
+
+### 3.16 Part body — a snapshot streamed ahead of its answer
+
+```
+...     1 to 16 MiB of the snapshot file, in order — no header of its own
+```
+
+Sent from minor 5, and only to a request that carried the stream byte (3.4). When that request's script takes a
+snapshot (`BACKUP` / `BACKUP STATE`), the node writes it to a spool and sends it as `Part` frames, then the frame that
+ends the request — `Answer`, `Refusal` or `Elsewhere`, exactly as without streaming. The client writes each part to
+its sink in order and stops at that frame. Nothing up front says how long the file is, and nothing has to: the
+request still ends on one of the three frames it always ended on.
+
+- With an `Answer`, the parts are the whole snapshot, and the `BACKUP STATE` outcome is its **summary** — an object
+  `{ form, records, version }` — since the bytes have already left.
+- With a `Refusal`, the parts are **not** a snapshot and the client discards them.
+- One snapshot per request: the first `BACKUP STATE` in the script streams; another answers as a value.
+- Only the snapshot streams. `BACKUP LOG` and `BACKUP SCRIPT` are answered whole, and an answer above the 16 MiB
+  ceiling is a refusal (3.6), class `invalid`, rather than a frame the client would refuse to read.
+
+The node sends parts of 1 MiB; a client must accept any length up to the ceiling.
 
 ---
 
