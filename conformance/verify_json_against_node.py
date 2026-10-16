@@ -66,6 +66,13 @@ class Unreachable(Exception):
 # --- writing a corpus value as TessariQL --------------------------------------
 
 
+def taken(message: str) -> bool:
+    """A refusal saying the name is already declared — in the words of node
+    0.35.2 and later ("… already exists") and of the nodes before it
+    ("… is already in use")."""
+    return "already exists" in message or "already in use" in message
+
+
 def quote_text(s: str) -> str:
     return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
@@ -247,7 +254,7 @@ def prepare(node: str, corpus: dict) -> None:
     `USE` does NOT survive across requests — each POST is its own session — so
     every later script carries the prelude rather than relying on this call.
     """
-    # Each statement on its own, tolerating its own "already in use", so the
+    # Each statement on its own, tolerating its own name-taken refusal, so the
     # harness may be re-run against a node that is still up — which it now shares
     # with the wire harness. `USE` does not survive a request, hence the prelude.
     setup = [
@@ -257,7 +264,7 @@ def prepare(node: str, corpus: dict) -> None:
     setup += [PRELUDE + f"DEFINE COLLECTION {name};" for name in NAMES.values()]
     for statement in setup:
         status, answer = run_script(node, statement)
-        if status != 200 and "already in use" not in str(answer):
+        if status != 200 and not taken(str(answer)):
             raise SystemExit(f"setup failed ({status}) on `{statement}`: {answer}")
 
 
