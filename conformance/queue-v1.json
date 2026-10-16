@@ -1,0 +1,391 @@
+{
+  "contract_major": 1,
+  "contract_minor": 0,
+  "what_this_is": "Rendering vectors for the queue worker contract in spec/queue-v1.md. A conforming client renders each case's `build` to exactly its `script` with exactly its `parameters`, and refuses each case carrying `refused` before sending.",
+  "this_is_language_not_protocol": "Section 6 of protocol-v1.md puts the query language outside the protocol. This corpus sits beside the query and consumer corpora for the same reason.",
+  "run_it_against_a_node_too": "Rendering agreement is the offline half. Section 7 of the contract is the other: each client runs its worker against a node built from the engine's dev branch.",
+  "generated_by": "generate_queue.py",
+  "cases": [
+    {
+      "name": "claim-a-batch",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "count": 10
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; USE CONSUMER 'resizer'; CLAIM 10 FROM jobs;",
+      "parameters": {}
+    },
+    {
+      "name": "claim-one",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "count": 1
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; USE CONSUMER 'resizer'; CLAIM 1 FROM jobs;",
+      "parameters": {}
+    },
+    {
+      "name": "claim-only-what-matches",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "count": 5,
+          "where": {
+            "compare": {
+              "field": "kind",
+              "op": "eq",
+              "value": {
+                "string": "image"
+              }
+            }
+          }
+        }
+      },
+      "note": "The condition is the query builder's WHERE, every value bound.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; USE CONSUMER 'resizer'; CLAIM 5 FROM jobs WHERE kind = $p0;",
+      "parameters": {
+        "p0": {
+          "string": "image"
+        }
+      }
+    },
+    {
+      "name": "claim-under-a-nested-condition",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "count": 5,
+          "where": {
+            "and": [
+              {
+                "compare": {
+                  "field": "kind",
+                  "op": "eq",
+                  "value": {
+                    "string": "image"
+                  }
+                }
+              },
+              {
+                "compare": {
+                  "field": "size",
+                  "op": "lt",
+                  "value": {
+                    "integer": "1000"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; USE CONSUMER 'resizer'; CLAIM 5 FROM jobs WHERE (kind = $p0 AND size < $p1);",
+      "parameters": {
+        "p0": {
+          "string": "image"
+        },
+        "p1": {
+          "integer": "1000"
+        }
+      }
+    },
+    {
+      "name": "a-worker-name-may-carry-dots-colons-and-dashes",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer.v2:eu-west",
+          "count": 10
+        }
+      },
+      "note": "The worker is a string literal, so it allows more than an identifier does.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; USE CONSUMER 'resizer.v2:eu-west'; CLAIM 10 FROM jobs;",
+      "parameters": {}
+    },
+    {
+      "name": "done-with-an-integer-identity",
+      "build": {
+        "done": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "id": {
+            "integer": "7"
+          }
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; DELETE jobs:$p0;",
+      "parameters": {
+        "p0": {
+          "integer": "7"
+        }
+      }
+    },
+    {
+      "name": "done-with-a-string-identity",
+      "build": {
+        "done": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "id": {
+            "string": "a7"
+          }
+        }
+      },
+      "note": "The identity is a value, so it is bound rather than written into the text.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; DELETE jobs:$p0;",
+      "parameters": {
+        "p0": {
+          "string": "a7"
+        }
+      }
+    },
+    {
+      "name": "hand-back-at-once",
+      "build": {
+        "release": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "id": {
+            "integer": "7"
+          }
+        }
+      },
+      "note": "Named with FOR CONSUMER: each claim declared the worker again as a new instance.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:$p0 FOR CONSUMER 'resizer';",
+      "parameters": {
+        "p0": {
+          "integer": "7"
+        }
+      }
+    },
+    {
+      "name": "hand-back-with-no-delay-writes-no-delay-clause",
+      "build": {
+        "release": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "id": {
+            "integer": "7"
+          },
+          "after_ms": 0
+        }
+      },
+      "note": "A delay of nothing is no clause at all.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:$p0 FOR CONSUMER 'resizer';",
+      "parameters": {
+        "p0": {
+          "integer": "7"
+        }
+      }
+    },
+    {
+      "name": "hand-back-after-a-delay",
+      "build": {
+        "release": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "id": {
+            "integer": "7"
+          },
+          "after_ms": 1500
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:$p0 FOR CONSUMER 'resizer' NOT BEFORE 1500ms;",
+      "parameters": {
+        "p0": {
+          "integer": "7"
+        }
+      }
+    },
+    {
+      "name": "the-largest-count-is-claimed",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "count": 500
+        }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; USE CONSUMER 'resizer'; CLAIM 500 FROM jobs;",
+      "parameters": {}
+    },
+    {
+      "name": "a-count-of-nothing-is-refused",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "count": 0
+        }
+      },
+      "refused": {
+        "reason": "not-a-count",
+        "what": "a count",
+        "name": "0"
+      }
+    },
+    {
+      "name": "a-count-above-the-ceiling-is-refused",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "resizer",
+          "count": 501
+        }
+      },
+      "note": "The node refuses it too; the client says so before sending.",
+      "refused": {
+        "reason": "not-a-count",
+        "what": "a count",
+        "name": "501"
+      }
+    },
+    {
+      "name": "a-queue-that-is-not-a-name-is-refused",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs-v2",
+          "worker": "w",
+          "count": 1
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a queue",
+        "name": "jobs-v2"
+      }
+    },
+    {
+      "name": "a-namespace-that-is-not-a-name-is-refused",
+      "build": {
+        "done": {
+          "namespace": "1shop",
+          "database": "live",
+          "queue": "jobs",
+          "id": {
+            "integer": "7"
+          }
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a namespace",
+        "name": "1shop"
+      }
+    },
+    {
+      "name": "a-filter-field-that-is-not-a-name-is-refused",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "w",
+          "count": 1,
+          "where": {
+            "compare": {
+              "field": "kind of",
+              "op": "eq",
+              "value": {
+                "string": "image"
+              }
+            }
+          }
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a field",
+        "name": "kind of"
+      }
+    },
+    {
+      "name": "a-worker-carrying-a-quote-is-refused-not-escaped",
+      "build": {
+        "release": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "o'brien",
+          "id": {
+            "integer": "7"
+          }
+        }
+      },
+      "note": "Refusing is the defence; an escaped quote would be a client deciding what the node's lexer does.",
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a worker",
+        "name": "o'brien"
+      }
+    },
+    {
+      "name": "an-empty-worker-is-refused",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "",
+          "count": 1
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a worker",
+        "name": ""
+      }
+    },
+    {
+      "name": "a-worker-longer-than-128-is-refused",
+      "build": {
+        "claim": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "worker": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+          "count": 1
+        }
+      },
+      "refused": {
+        "reason": "not-a-name",
+        "what": "a worker",
+        "name": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+      }
+    }
+  ]
+}
