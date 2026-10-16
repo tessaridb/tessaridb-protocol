@@ -52,6 +52,7 @@ So the specification comes first and lives on its own:
 | `spec/protocol-v1.md` | the normative specification of protocol version 1.5 |
 | `spec/query-builder-v1.md` | the rendering contract for a query builder, version 1.1 — **language, not protocol**, and separate for that reason (§6) |
 | `spec/consumer-v1.md` | the contract for consuming a topic with a callback as a member of a consumer group — the statements sent, auto and manual acknowledgement, waiting, refusals; **language, not protocol** |
+| `spec/queue-v1.md` | the contract for taking work from a queue — claim (narrowed by a condition), done, hand back, the worker loop, refusals; **language, not protocol** |
 | `spec/cache-v1.md` | the contract for a space used as a cache, a counter and a lock — the statements each call sends, `getOrSet`, the lease; **language, not protocol** |
 | `spec/vault-v1.md` | the contract for a client's vault functions — status, unseal, seal, change the passphrase — of the store or of one vault with its own — over the vault frame or routes; list, reveal, write, recipients and audit as statements; where a passphrase may never appear |
 | `conformance/` | executable test vectors every client is checked against |
@@ -59,6 +60,7 @@ So the specification comes first and lives on its own:
 | `conformance/queries-v1.json` | the query builder, 38 cases, rendering and refusals |
 | `conformance/json-v1.json` | the `POST /script` answer, 59 cases, decode only |
 | `conformance/consumer-v1.json` | the topic consumer's statements, 14 cases, rendering and refusals |
+| `conformance/queue-v1.json` | the queue worker's statements, 20 cases, rendering and refusals |
 | `conformance/vault-v1.json` | the vault frame's bodies — on the store and on one vault with its own passphrase — and the vault functions' statements, 11 frames and 19 statements |
 | `conformance/frames-v1.json` | the `Elsewhere` (redirect) frame body — 4 decoded and 4 malformed |
 | `conformance/README.md` | how to run the corpora against a client |
@@ -136,6 +138,8 @@ which is strong but is not the same claim.
    case against it, which is the only check that reaches the parser.
    If you ship a topic consumer, read `spec/consumer-v1.md`, run `consumer-v1.json`,
    and verify it against a running node in both acknowledgement modes.
+   If you ship a queue worker, read `spec/queue-v1.md`, run `queue-v1.json`, and
+   verify it against a node built from the engine's `dev` branch.
    If you ship vault functions, read `spec/vault-v1.md`, run `vault-v1.json`, and
    run them against a node built from the engine's `dev` branch.
 4. Where the document did not answer a question you had, open an issue here. That
