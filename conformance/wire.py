@@ -170,6 +170,13 @@ class Node:
         self.sock.close()
 
 
+def taken(message: str) -> bool:
+    """A refusal saying the name is already declared — in the words of node
+    0.35.2 and later ("… already exists") and of the nodes before it
+    ("… is already in use")."""
+    return "already exists" in message or "already in use" in message
+
+
 def prepare(node: Node) -> None:
     """Select a namespace and a database, once.
 
@@ -187,5 +194,5 @@ def prepare(node: Node) -> None:
         try:
             node.request(statement)
         except Refused as why:
-            if "already in use" not in str(why):
+            if not taken(str(why)):
                 raise
