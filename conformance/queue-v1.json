@@ -127,37 +127,38 @@
           "namespace": "shop",
           "database": "live",
           "queue": "jobs",
-          "id": {
-            "integer": "7"
-          }
+          "id": "7"
         }
       },
-      "script": "USE NAMESPACE shop; USE DATABASE live; DELETE jobs:$p0;",
-      "parameters": {
-        "p0": {
-          "integer": "7"
-        }
-      }
+      "script": "USE NAMESPACE shop; USE DATABASE live; DELETE jobs:7;",
+      "parameters": {}
     },
     {
-      "name": "done-with-a-string-identity",
+      "name": "done-with-a-text-identity",
       "build": {
         "done": {
           "namespace": "shop",
           "database": "live",
           "queue": "jobs",
-          "id": {
-            "string": "a7"
-          }
+          "id": "'a7'"
         }
       },
-      "note": "The identity is a value, so it is bound rather than written into the text.",
-      "script": "USE NAMESPACE shop; USE DATABASE live; DELETE jobs:$p0;",
-      "parameters": {
-        "p0": {
-          "string": "a7"
+      "note": "The identity is written back as the claim spelled it; the quotes are what make it text.",
+      "script": "USE NAMESPACE shop; USE DATABASE live; DELETE jobs:'a7';",
+      "parameters": {}
+    },
+    {
+      "name": "done-with-a-uuid-identity",
+      "build": {
+        "done": {
+          "namespace": "shop",
+          "database": "live",
+          "queue": "jobs",
+          "id": "uuid '0190a0b1-0000-7000-8000-000000000001'"
         }
-      }
+      },
+      "script": "USE NAMESPACE shop; USE DATABASE live; DELETE jobs:uuid '0190a0b1-0000-7000-8000-000000000001';",
+      "parameters": {}
     },
     {
       "name": "hand-back-at-once",
@@ -167,18 +168,12 @@
           "database": "live",
           "queue": "jobs",
           "worker": "resizer",
-          "id": {
-            "integer": "7"
-          }
+          "id": "7"
         }
       },
       "note": "Named with FOR CONSUMER: each claim declared the worker again as a new instance.",
-      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:$p0 FOR CONSUMER 'resizer';",
-      "parameters": {
-        "p0": {
-          "integer": "7"
-        }
-      }
+      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:7 FOR CONSUMER 'resizer';",
+      "parameters": {}
     },
     {
       "name": "hand-back-with-no-delay-writes-no-delay-clause",
@@ -188,19 +183,13 @@
           "database": "live",
           "queue": "jobs",
           "worker": "resizer",
-          "id": {
-            "integer": "7"
-          },
+          "id": "7",
           "after_ms": 0
         }
       },
       "note": "A delay of nothing is no clause at all.",
-      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:$p0 FOR CONSUMER 'resizer';",
-      "parameters": {
-        "p0": {
-          "integer": "7"
-        }
-      }
+      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:7 FOR CONSUMER 'resizer';",
+      "parameters": {}
     },
     {
       "name": "hand-back-after-a-delay",
@@ -210,18 +199,12 @@
           "database": "live",
           "queue": "jobs",
           "worker": "resizer",
-          "id": {
-            "integer": "7"
-          },
+          "id": "7",
           "after_ms": 1500
         }
       },
-      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:$p0 FOR CONSUMER 'resizer' NOT BEFORE 1500ms;",
-      "parameters": {
-        "p0": {
-          "integer": "7"
-        }
-      }
+      "script": "USE NAMESPACE shop; USE DATABASE live; RELEASE jobs:7 FOR CONSUMER 'resizer' NOT BEFORE 1500ms;",
+      "parameters": {}
     },
     {
       "name": "the-largest-count-is-claimed",
@@ -296,9 +279,7 @@
           "namespace": "1shop",
           "database": "live",
           "queue": "jobs",
-          "id": {
-            "integer": "7"
-          }
+          "id": "7"
         }
       },
       "refused": {
@@ -341,9 +322,7 @@
           "database": "live",
           "queue": "jobs",
           "worker": "o'brien",
-          "id": {
-            "integer": "7"
-          }
+          "id": "7"
         }
       },
       "note": "Refusing is the defence; an escaped quote would be a client deciding what the node's lexer does.",

@@ -60,7 +60,7 @@ So the specification comes first and lives on its own:
 | `conformance/queries-v1.json` | the query builder, 38 cases, rendering and refusals |
 | `conformance/json-v1.json` | the `POST /script` answer, 59 cases, decode only |
 | `conformance/consumer-v1.json` | the topic consumer's statements, 14 cases, rendering and refusals |
-| `conformance/queue-v1.json` | the queue worker's statements, 19 cases, rendering and refusals |
+| `conformance/queue-v1.json` | the queue worker's statements, 20 cases, rendering and refusals |
 | `conformance/vault-v1.json` | the vault frame's bodies — on the store and on one vault with its own passphrase — and the vault functions' statements, 11 frames and 19 statements |
 | `conformance/frames-v1.json` | the `Elsewhere` (redirect) frame body — 4 decoded and 4 malformed |
 | `conformance/README.md` | how to run the corpora against a client |

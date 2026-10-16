@@ -101,10 +101,11 @@ def render(build):
             narrowed = f" WHERE {render_filter(fields['where'], binder)}"
         script = f"{tenancy}USE CONSUMER '{worker}'; CLAIM {count} FROM {queue}{narrowed};"
         return script, binder.parameters
+    # The identity is the claim's own spelling, written back unchanged (§2).
+    record = fields["id"]
     if kind == "done":
-        return f"{tenancy}DELETE {queue}:{binder.bind(fields['id'])};", binder.parameters
+        return f"{tenancy}DELETE {queue}:{record};", binder.parameters
     worker = checked_worker(fields["worker"])
-    record = binder.bind(fields["id"])
     after = fields.get("after_ms", 0)
     tail = f" NOT BEFORE {after}ms" if after > 0 else ""
     script = f"{tenancy}RELEASE {queue}:{record} FOR CONSUMER '{worker}'{tail};"
@@ -114,7 +115,7 @@ def render(build):
 # --- cases --------------------------------------------------------------------
 
 WHERE = {"namespace": "shop", "database": "live", "queue": "jobs"}
-SEVEN = {"integer": "7"}
+SEVEN = "7"
 
 
 def at(**fields):
@@ -157,10 +158,11 @@ CASES = [
     ),
     case("done-with-an-integer-identity", {"done": at(id=SEVEN)}),
     case(
-        "done-with-a-string-identity",
-        {"done": at(id={"string": "a7"})},
-        "The identity is a value, so it is bound rather than written into the text.",
+        "done-with-a-text-identity",
+        {"done": at(id="'a7'")},
+        "The identity is written back as the claim spelled it; the quotes are what make it text.",
     ),
+    case("done-with-a-uuid-identity", {"done": at(id="uuid '0190a0b1-0000-7000-8000-000000000001'")}),
     case(
         "hand-back-at-once",
         {"release": at(worker="resizer", id=SEVEN)},

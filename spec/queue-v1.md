@@ -41,13 +41,19 @@ named from `p0` in binding order.
 | step | statement |
 |---|---|
 | take work | `USE NAMESPACE <ns>; USE DATABASE <db>; USE CONSUMER '<worker>'; CLAIM <n> FROM <queue>[ WHERE <filter>];` |
-| done | `USE NAMESPACE <ns>; USE DATABASE <db>; DELETE <queue>:$p0;` |
-| hand back | `USE NAMESPACE <ns>; USE DATABASE <db>; RELEASE <queue>:$p0 FOR CONSUMER '<worker>'[ NOT BEFORE <d>ms];` |
+| done | `USE NAMESPACE <ns>; USE DATABASE <db>; DELETE <queue>:<id>;` |
+| hand back | `USE NAMESPACE <ns>; USE DATABASE <db>; RELEASE <queue>:<id> FOR CONSUMER '<worker>'[ NOT BEFORE <d>ms];` |
 
 `<n>` is a whole number from 1 to 500, written into the statement; a client
 refuses any other count before sending. `<filter>` is rendered exactly as the
 query builder renders a `WHERE` (`query-builder-v1.md` §4.3), every value bound.
-The record's identity is bound (`$p0`), an integer or a string.
+`<id>` is the record's identity **exactly as the claim's answer spelled it** —
+`7`, `'a7'`, `uuid '…'` — written back unchanged and never parsed into a typed
+value (protocol §3.5: a client that re-parses identities is a second spelling
+authority). A client therefore settles only a record it claimed, through the
+value its claim produced, and never from text a caller typed. This is the wire's
+spelling; the HTTP surface collapses `7` and `'7'` (§5.7.1), so a worker runs
+over the wire.
 
 A claim answers the records it took, in the order the queue hands them out —
 arrival, or `PRIORITY BY` — each `<id>: { …fields, attempts, claimed_until,
