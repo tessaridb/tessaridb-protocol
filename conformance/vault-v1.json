@@ -1,6 +1,6 @@
 {
   "contract_major": 1,
-  "contract_minor": 0,
+  "contract_minor": 1,
   "protocol_minor": 2,
   "what_this_is": "Vectors for the vault contract in spec/vault-v1.md. A conforming client encodes each `frames` case's `build` to exactly its `body_hex` (the body of a Vault frame, tag 17, protocol §3.14), renders each `statements` case to exactly its `script` with exactly its `parameters`, and refuses each case carrying `refused` before sending.",
   "parameter_kinds": "string, integer (as decimal text) and bytes (as hex), each a one-key object.",
@@ -119,6 +119,20 @@
         }
       },
       "body_hex": "00010000000473686f70000000046c697665000000087465616d5f6f776e040000001161207465616d20706173737068726173650000001561206e6577207465616d2070617373706872617365"
+    },
+    {
+      "name": "declare-one-vault",
+      "build": {
+        "act": "declare",
+        "passphrase": "a team passphrase",
+        "vault": {
+          "namespace": "shop",
+          "database": "live",
+          "vault": "team_own"
+        }
+      },
+      "note": "Act 5 (protocol minor 6): the vault target, then the act and its own passphrase.",
+      "body_hex": "00010000000473686f70000000046c697665000000087465616d5f6f776e050000001161207465616d2070617373706872617365"
     }
   ],
   "statements": [
