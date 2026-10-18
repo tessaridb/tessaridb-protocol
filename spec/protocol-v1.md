@@ -225,6 +225,10 @@ node release after `0.33.4-beta`. The client asks, so the client gates: it sends
 `minor >= 5`, and tells its caller the node cannot stream otherwise. A node sends `Part` only to a request that
 carried the byte, so no older client ever meets the tag.
 
+`minor = 6` adds act **5, declare** to the Vault body (3.14), since node `0.36.1`. The client asks, so the client
+gates: it sends the act only to a node whose greeting carried `minor >= 6`, and tells its caller the node cannot
+declare a vault otherwise. An older node reads the act byte as malformed and closes the connection.
+
 ---
 
 ## 3. The wire protocol
@@ -236,7 +240,7 @@ TCP. On connect, **both sides send** the greeting before anything else:
 ```
 "TESS"   4 bytes, ASCII, literally 0x54 0x45 0x53 0x53
 major    1 byte, currently 1
-minor    1 byte, currently 2
+minor    1 byte, currently 6
 ```
 
 Six bytes.
@@ -929,7 +933,7 @@ TLS-terminating proxy in front of it. A page served over `https://` cannot open 
 A browser's `WebSocket` has no read-side flow control: a subscriber that stops consuming changes accumulates them in
 the page's memory rather than filling a socket, so the node's 30-second drop never fires for it. A client says so.
 
-### 3.14 Vault body — unseal, seal, change the passphrase, ask
+### 3.14 Vault body — unseal, seal, change the passphrase, ask, declare
 
 Since node `0.17.0-beta`, protocol minor 2. The four acts on the store's key, or on one vault that carries its own
 passphrase, with the passphrase as a **field of the frame** and never as script text: a script is what a console keeps in its history, what a client logs when a
@@ -952,10 +956,16 @@ u8      act
         3 = seal            nothing follows
         4 = change          text   the current passphrase
                             text   the new passphrase
+        5 = declare         text   the vault's own passphrase      (minor 6; target 1 only)
 ```
 
-Nothing may follow the last field; a body with bytes left over, an act byte other than 1-4, a target other than 0 or 1,
-or a credentials flag other than 0 or 1 is malformed.
+Nothing may follow the last field; a body with bytes left over, an act byte other than 1-5, act 5 with target 0, a
+target other than 0 or 1, or a credentials flag other than 0 or 1 is malformed.
+
+Act 5 declares the target vault with its own passphrase, as `DEFINE VAULT v PASSPHRASE '…'` does in the named
+tenancy, so an application that creates such a vault never writes the passphrase into a script. It needs manage in
+the vault's database, as the statement does, leaves the new vault unsealed for one period, and answers its seal
+status (`custody: own`); a name already taken is refused.
 
 A vault target names a vault declared with its own passphrase (`DEFINE VAULT v PASSPHRASE '…'`): its key is wrapped
 under that passphrase instead of the store's, so the store's passphrase opens nothing in it. The acts on it are the
@@ -2197,7 +2207,8 @@ dropped, as `POST /password`'s is, so `curl --data-binary @file` works. `POST /v
 
 The same four under `/vault/{namespace}/{database}/{vault}` — `GET` for the status, `POST …/unseal`, `…/seal`,
 `…/passphrase` with the same bodies — act on one vault carrying its own passphrase, and answer with `custody` beside
-the rest. Read against a node built from the engine's `dev` branch on 2026-09-30:
+the rest. `POST …/declare`, whose body is the passphrase as for `…/unseal`, declares that vault with its own
+passphrase (act 5's route, node `0.36.1`). Read against a node built from the engine's `dev` branch on 2026-09-30:
 `{"custody":"own","seals_at":"2026-09-30T17:00:50.825706Z","state":"unsealed","unseal_for":"10m"}` for a vault with its
 own passphrase, and `{"custody":"store","state":"sealed","unseal_for":"10m"}` for one in the store's custody while the
 store is sealed.

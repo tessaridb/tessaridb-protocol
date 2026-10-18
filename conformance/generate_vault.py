@@ -63,6 +63,11 @@ def frame_body(build):
         body.append(4)
         body += text(build["current"])
         body += text(build["new"])
+    elif act == "declare":
+        if vault is None:
+            raise ValueError("a declaration names its vault (protocol §3.14, act 5)")
+        body.append(5)
+        body += text(build["passphrase"])
     else:
         raise ValueError(f"no such act: {act}")
     return bytes(body).hex()
@@ -196,6 +201,11 @@ FRAMES = [
         "change-one-vaults-passphrase",
         {"act": "change", "current": "a team passphrase", "new": "a new team passphrase", "vault": TEAM_OWN},
     ),
+    frame(
+        "declare-one-vault",
+        {"act": "declare", "passphrase": "a team passphrase", "vault": TEAM_OWN},
+        "Act 5 (protocol minor 6): the vault target, then the act and its own passphrase.",
+    ),
 ]
 
 STATEMENTS = [
@@ -257,7 +267,7 @@ def build_corpus():
 
     return {
         "contract_major": 1,
-        "contract_minor": 0,
+        "contract_minor": 1,
         "protocol_minor": 2,
         "what_this_is": (
             "Vectors for the vault contract in spec/vault-v1.md. A conforming client encodes each `frames` "
