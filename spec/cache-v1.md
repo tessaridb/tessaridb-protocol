@@ -1,6 +1,7 @@
 # TessariDB space as a cache — client contract, version 1
 
-**Cache contract version 1.0.** Drafted 2026-09-30. Needs a node at `0.15.0-beta` or later for the routes of
+**Cache contract version 1.1.** Drafted 2026-09-30; 1.1 (2026-10-26) adds the container calls of §2a, which need
+a node at `0.39.0` or later for their reads (the `set::` and `scores::` functions, `array::at`, `object::get`). Needs a node at `0.15.0-beta` or later for the routes of
 protocol §5.10; the statements below work on any node with spaces (`0.5.0-beta`), except `DELETE … RETURN BEFORE`
 on a space, which needs `0.6.0-beta`.
 
@@ -72,6 +73,56 @@ a text key arrives quoted, `'user:1'`. A client turns a quoted key back into the
 quotes, `\'` becomes `'` and `\\` becomes `\` — and returns any other kind of key (an integer id a script wrote)
 in its language form unchanged, because it is not a key this handle wrote.
 
+## 2a. Containers on a key (1.1)
+
+A key may hold a **list**, a **hash**, a **set of members** or a **ranking** (members with scores). Writes are the
+node's container statements and are atomic per key; reads are functions over `GET`, so each call is still ONE
+statement. A read of a key that is not there answers the **empty** form — an empty list, map or set, `0` for a
+length, `false` for a membership — and an element, field, score or rank that is not there answers **absent**.
+
+| call | statement | answer |
+|---|---|---|
+| `listPush(key, values, front = false)` | `LIST PUSH {s}:$k BACK $v0, $v1, …;` · front `LIST PUSH {s}:$k FRONT $v0, …;` | the new length |
+| `listPop(key, front = true)` | `LIST POP {s}:$k FRONT;` · back `LIST POP {s}:$k BACK;` | the element, or **absent** |
+| `listPop(key, front, count)` | `LIST POP {s}:$k FRONT LIMIT $n;` (`BACK` likewise) | the elements, in the order taken |
+| `listRange(key, start, count)` | `RETURN array::slice(GET {s}:$k, $i, $n);` | the elements |
+| `listAt(key, index)` | `RETURN array::at(GET {s}:$k, $i);` | the element (negative from the back), or **absent** |
+| `listLen(key)` | `RETURN array::len(GET {s}:$k);` | the length |
+| `listRemove(key, value, count?)` | `LIST REMOVE {s}:$k $v;` · with a count `LIST REMOVE {s}:$k $v LIMIT $n;` | how many went |
+| `listTrim(key, start, stop)` | `LIST TRIM {s}:$k FROM $i TO $j;` | nothing |
+| `hashSet(key, fields)` | `HASH SET {s}:$k $f0 = $v0, $f1 = $v1, …;` | how many fields are new |
+| `hashGet(key, field)` | `RETURN object::get(GET {s}:$k, $f);` | the value, or **absent** |
+| `hashGetAll(key)` | `GET {s}:$k;` | the fields as a map |
+| `hashRemove(key, fields)` | `HASH REMOVE {s}:$k $f0, $f1, …;` | how many went |
+| `hashIncr(key, field, by = 1)` | `HASH INCR {s}:$k $f BY $n;` | the field's new integer |
+| `hashLen(key)` | `RETURN object::len(GET {s}:$k);` | how many fields |
+| `membersAdd(key, members)` | `MEMBERS ADD {s}:$k $v0, $v1, …;` | how many are new |
+| `membersRemove(key, members)` | `MEMBERS REMOVE {s}:$k $v0, $v1, …;` | how many went |
+| `membersHas(key, member)` | `RETURN $v IN GET {s}:$k;` | the boolean |
+| `membersAll(key)` | `GET {s}:$k;` | the members |
+| `membersLen(key)` | `RETURN set::len(GET {s}:$k);` | how many |
+| `scoresAdd(key, scores)` | `SCORES ADD {s}:$k $m0 = $c0, $m1 = $c1, …;` | how many members are new |
+| `scoresIncr(key, member, by)` | `SCORES INCR {s}:$k $m BY $c;` | the member's new score |
+| `scoresRemove(key, members)` | `SCORES REMOVE {s}:$k $m0, $m1, …;` | how many went |
+| `scoresScore(key, member)` | `RETURN scores::score(GET {s}:$k, $m);` | the score, or **absent** |
+| `scoresRank(key, member)` | `RETURN scores::rank(GET {s}:$k, $m);` | the place from the lowest, from 0, or **absent** |
+| `scoresRange(key, start, stop)` | `RETURN scores::range(GET {s}:$k, $i, $j);` | `(member, score)` pairs, lowest first |
+| `scoresBetween(key, low?, high?)` | `RETURN scores::between(GET {s}:$k, $lo, $hi);` — an absent bound is written `NONE` in its place | `(member, score)` pairs, lowest first |
+
+Parameter names: `$v0`, `$v1`, … values and members in the order given; `$f0`, `$f1`, … field names; `$m0`, … ranked
+members with `$c0`, … their scores; single ones `$v`, `$f`, `$m`, `$c`; `$n` a count or an increment; `$i`, `$j` positions;
+`$lo`, `$hi` score bounds. A hash's fields and a ranking's scores are sent in the order the caller gave them, and a
+client whose language has no ordered map sends them in its map's iteration order — the node's answer does not depend
+on it.
+
+A client MUST refuse, before sending: an **empty** list of values, fields or members (the statement needs one); a
+negative `start` or `count` for `listRange` (a slice starts at the first element; `listAt` and `scoresRange` count
+from the back instead); a negative count for `listPop` or `listRemove`; a field, member or ranked member that is not
+a string; a score that is not a finite number.
+
+Kinds stay apart: a call on a key holding another kind is the node's refusal (`KeyHoldsAnotherKind` for a write,
+`WrongArgument` for a read), raised as §5 says.
+
 ## 3. `getOrSet`
 
 ```
@@ -109,6 +160,6 @@ second.
 
 ## 6. Verification
 
-Each client carries an offline test that the statements it sends are, byte for byte, the ones in §2, and a live
-test against a node covering every call — including a release followed by a `lock` from another holder succeeding,
+Each client carries an offline test that the statements it sends are, byte for byte, the ones in §2 and §2a, and a
+live test against a node covering every call — including a release followed by a `lock` from another holder succeeding,
 which fails when the release writes no expiry.
