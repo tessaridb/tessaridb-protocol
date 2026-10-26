@@ -53,7 +53,7 @@ So the specification comes first and lives on its own:
 | `spec/query-builder-v1.md` | the rendering contract for a query builder, version 1.1 — **language, not protocol**, and separate for that reason (§6) |
 | `spec/consumer-v1.md` | the contract for consuming a topic with a callback as a member of a consumer group — the statements sent, auto and manual acknowledgement, waiting, refusals; **language, not protocol** |
 | `spec/queue-v1.md` | the contract for taking work from a queue — claim (narrowed by a condition), done, hand back, the worker loop, refusals; **language, not protocol** |
-| `spec/cache-v1.md` | the contract for a space used as a cache, a counter and a lock — the statements each call sends, `getOrSet`, the lease; **language, not protocol** |
+| `spec/cache-v1.md` | the contract for a space used as a cache, a counter and a lock, and for a list, a hash, a set or a ranking under a key — the statements each call sends, `getOrSet`, the lease; **language, not protocol** |
 | `spec/vault-v1.md` | the contract for a client's vault functions — status, unseal, seal, change the passphrase — of the store or of one vault with its own — over the vault frame or routes; list, reveal, write, recipients and audit as statements; where a passphrase may never appear |
 | `conformance/` | executable test vectors every client is checked against |
 | `conformance/values-v1.json` | the value codec, 54 vectors, both directions |
