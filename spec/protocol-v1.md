@@ -229,6 +229,12 @@ carried the byte, so no older client ever meets the tag.
 gates: it sends the act only to a node whose greeting carried `minor >= 6`, and tells its caller the node cannot
 declare a vault otherwise. An older node reads the act byte as malformed and closes the connection.
 
+`minor = 7` adds **keys** to the Request body (3.4) and acts **6, declare keyed** and **7, change key** to the Vault
+body (3.14), in the node release after `0.39.2`. The client sends, so the client gates: it sends keys or either act
+only to a node whose greeting carried `minor >= 7`, and tells its caller the node cannot open a keyed vault
+otherwise, before sending anything. An older node would read past the keys and run the script without them — the
+vault would answer *sealed* for a reason the caller cannot see — or close the connection on the act byte.
+
 ---
 
 ## 3. The wire protocol
@@ -240,7 +246,7 @@ TCP. On connect, **both sides send** the greeting before anything else:
 ```
 "TESS"   4 bytes, ASCII, literally 0x54 0x45 0x53 0x53
 major    1 byte, currently 1
-minor    1 byte, currently 6
+minor    1 byte, currently 7
 ```
 
 Six bytes.
@@ -343,12 +349,26 @@ u32     parameter count
 text      parameter name
 bytes     the value, encoded per section 4
 u8      stream — OPTIONAL, from minor 5: 1 = send the snapshot this script takes
-        as `Part` frames (3.16); written only when set
+        as `Part` frames (3.16); written when set, and whenever keys follow
+u32     key count — OPTIONAL, from minor 7: written only when there are keys
+        repeated `count` times:
+text      namespace
+text      database
+text      vault
+32 bytes  the key that opens that vault
 ```
 
-Any other credentials flag byte is malformed, and so is a stream byte other than 0 or 1. A client sends the stream
-byte only to a node whose greeting carried `minor >= 5`: an older node reads past it and answers the snapshot as a
-value. Vectors: `conformance/frames-v1.json`, `request`.
+Any other credentials flag byte is malformed, and so is a stream byte other than 0 or 1, a key shorter than 32
+bytes, or anything after the last key. A client sends the stream byte only to a node whose greeting carried
+`minor >= 5`: an older node reads past it and answers the snapshot as a value. Vectors:
+`conformance/frames-v1.json`, `request`.
+
+**Keys** open vaults in key custody (3.14) for this request and no other: the node checks every key against its
+vault before the script runs — a key for a vault in another custody refuses the whole request, and a wrong key
+is refused and throttled like a wrong passphrase — then holds them while the script runs and wipes them when the
+request ends. A request carrying keys is answered by the node it reached and is never carried to another node; a
+redirect sends the client to present them there. Keys travel as fields, never in the script and never as
+parameters. Vectors: `conformance/frames-v1.json`, `keyed`.
 
 **Parameter values travel in the value codec, never as text.** This is the reason
 the wire protocol exists. A value the server has to *parse* is a value that can be
@@ -933,7 +953,7 @@ TLS-terminating proxy in front of it. A page served over `https://` cannot open 
 A browser's `WebSocket` has no read-side flow control: a subscriber that stops consuming changes accumulates them in
 the page's memory rather than filling a socket, so the node's 30-second drop never fires for it. A client says so.
 
-### 3.14 Vault body — unseal, seal, change the passphrase, ask, declare
+### 3.14 Vault body — unseal, seal, change the passphrase, ask, declare, keyed vaults
 
 Since node `0.17.0-beta`, protocol minor 2. The four acts on the store's key, or on one vault that carries its own
 passphrase, with the passphrase as a **field of the frame** and never as script text: a script is what a console keeps in its history, what a client logs when a
@@ -957,10 +977,21 @@ u8      act
         4 = change          text   the current passphrase
                             text   the new passphrase
         5 = declare         text   the vault's own passphrase      (minor 6; target 1 only)
+        6 = declare keyed   32 bytes  the vault's key              (minor 7; target 1 only)
+        7 = change key      32 bytes  the current key              (minor 7; target 1 only)
+                            32 bytes  the new key
 ```
 
-Nothing may follow the last field; a body with bytes left over, an act byte other than 1-5, act 5 with target 0, a
-target other than 0 or 1, or a credentials flag other than 0 or 1 is malformed.
+Nothing may follow the last field; a body with bytes left over, an act byte other than 1-7, act 5, 6 or 7 with
+target 0, a key shorter than 32 bytes, a target other than 0 or 1, or a credentials flag other than 0 or 1 is
+malformed.
+
+Act 6 declares the target vault in **key custody**: its key is wrapped under a key derived from the 32 bytes the
+caller holds, so neither the store's passphrase nor the vault's own opens it, and it opens only for a Request that
+carries the key (3.4). There is no unseal, seal or period for such a vault, and acts 2-4 on it are refused
+(`VaultOpensWithAKey`). Act 7 re-wraps the same key under a new one — no secret is re-encrypted — after proving the
+current key under the passphrase throttle. Both need manage in the vault's database, and both answer the seal status
+with `custody: key` and `state: sealed`, which is what such a vault always reports.
 
 Act 5 declares the target vault with its own passphrase, as `DEFINE VAULT v PASSPHRASE '…'` does in the named
 tenancy, so an application that creates such a vault never writes the passphrase into a script. It needs manage in
@@ -981,7 +1012,7 @@ custody. The node answers every act with an **Answer** (3.5) holding **one** out
 | `seals_at` | datetime when `unsealed` — the instant the store seals itself; absent (`none`) otherwise |
 | `unseal_for` | duration — how long an unseal lasts on this node |
 | `initialised` | `true`, present only on the unseal that set the store's first passphrase |
-| `custody` | string, present only for a vault target: `own` (the vault's passphrase) or `store` — for which the state is the store's |
+| `custody` | string, present only for a vault target: `own` (the vault's passphrase), `key` (a presented key, always `sealed`), or `store` — for which the state is the store's |
 
 or with a **Refusal** (3.6), whose text never contains either passphrase. The connection stays a conversation after
 either. An unseal lasts `unseal_for` from the moment it is taken and is not renewed by use; unsealing a store that is
