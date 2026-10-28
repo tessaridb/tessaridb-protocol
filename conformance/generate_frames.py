@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate the frame conformance corpus: the `Elsewhere` body of protocol §3.12,
 the classed `Refusal` body of §3.6, the `Progress` body of §3.15, and the
-Request body's stream byte of §3.4 with the `Part` frame of §3.16.
+Request body's stream byte of §3.4 with the `Part` frame of §3.16, and the keys
+a Request carries with acts 6 and 7 of the Vault body (§3.4, §3.14, minor 7).
 
 A **second implementation** of that body, written from the specification alone.
 A redirect is the one frame a client must act on rather than report, and an
@@ -132,6 +133,49 @@ def request_case(name, script, stream):
     }
 
 
+KEY = bytes([0x5A] * 32)
+NEXT_KEY = bytes([0x6B] * 32)
+
+
+def keyed_request_body(script, stream, keys):
+    """§3.4 from minor 7: the stream byte, written whenever keys follow, then the
+    key count and each key as namespace, database, vault and 32 bytes."""
+    body = text(script) + b"\x00" + struct.pack(">I", 0) + (b"\x01" if stream else b"\x00")
+    body += struct.pack(">I", len(keys))
+    for namespace, database, vault, key in keys:
+        body += text(namespace) + text(database) + text(vault) + key
+    return body
+
+
+def keyed_request_case(name, script, stream, keys):
+    return {
+        "name": name,
+        "body_hex": keyed_request_body(script, stream, keys).hex(),
+        "decoded": {
+            "script": script,
+            "stream": stream,
+            "keys": [
+                {"namespace": n, "database": d, "vault": v, "key_hex": k.hex()} for n, d, v, k in keys
+            ],
+        },
+    }
+
+
+def vault_target(namespace, database, vault):
+    """§3.14: no credentials, then target 1 naming one vault."""
+    return b"\x00" + b"\x01" + text(namespace) + text(database) + text(vault)
+
+
+def keyed_act_case(name, act, keys):
+    body = vault_target("prod", "work", "team") + bytes([act]) + b"".join(keys)
+    decoded = {"namespace": "prod", "database": "work", "vault": "team"}
+    if act == 6:
+        decoded.update({"act": "declare-keyed", "key_hex": keys[0].hex()})
+    else:
+        decoded.update({"act": "change-key", "current_hex": keys[0].hex(), "new_hex": keys[1].hex()})
+    return {"name": name, "body_hex": body.hex(), "decoded": decoded}
+
+
 def malformed_case(name, body, why):
     return {"name": name, "body_hex": body.hex(), "malformed": why}
 
@@ -140,7 +184,7 @@ def build_corpus():
     node = bytes(range(16))
     good = elsewhere_body(node, 7, 1, "b.example:9080")
     return {
-        "protocol_minor": 5,
+        "protocol_minor": 7,
         "what_this_is": (
             "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming "
             "client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` "
@@ -155,7 +199,11 @@ def build_corpus():
             "And for the Request body (tag 1), protocol §3.4 from minor 5: each `request` case "
             "is the body a client sends for its `decoded` script and stream flag — the stream "
             "byte appears only when set — and a node refuses a stream byte other than 0 or 1. "
-            "A `Part` (tag 38, §3.16) carries raw snapshot bytes and has no body to vector."
+            "A `Part` (tag 38, §3.16) carries raw snapshot bytes and has no body to vector. "
+            "And from minor 7: each `keyed` case is either a Request body (`decoded.keys` present) "
+            "carrying keys after its stream byte, or a Vault body (`decoded.act`) for act 6 or 7 on "
+            "one vault; a client encodes `decoded` to exactly `body_hex`, a node decodes `body_hex` "
+            "to exactly `decoded`, and every case carrying `malformed` is refused."
         ),
         "generated_by": "generate_frames.py",
         "elsewhere": [
@@ -201,6 +249,42 @@ def build_corpus():
                 "a-stream-byte-of-two",
                 request_body("BACKUP STATE;", False) + b"\x02",
                 "the stream byte is 1 when present, and 0 is the same as absent",
+            ),
+        ],
+        "keyed": [
+            keyed_request_case(
+                "a-request-opening-one-keyed-vault",
+                "REVEAL token FROM team:'github';",
+                False,
+                [("prod", "work", "team", KEY)],
+            ),
+            keyed_request_case(
+                "keys-for-two-vaults-beside-a-stream",
+                "BACKUP STATE;",
+                True,
+                [("prod", "work", "team", KEY), ("prod", "ops", "infra", NEXT_KEY)],
+            ),
+            keyed_act_case("declare-a-keyed-vault", 6, [KEY]),
+            keyed_act_case("change-a-vaults-key", 7, [KEY, NEXT_KEY]),
+            malformed_case(
+                "a-key-cut-short",
+                keyed_request_body("RETURN 1;", False, [("prod", "work", "team", KEY)])[:-1],
+                "a key is 32 bytes, never fewer",
+            ),
+            malformed_case(
+                "a-byte-after-the-last-key",
+                keyed_request_body("RETURN 1;", False, [("prod", "work", "team", KEY)]) + b"\x00",
+                "nothing follows the last key",
+            ),
+            malformed_case(
+                "declare-keyed-on-the-store",
+                b"\x00\x00\x06" + KEY,
+                "acts 6 and 7 name one vault; the store has no keyed form",
+            ),
+            malformed_case(
+                "change-key-missing-the-new-key",
+                vault_target("prod", "work", "team") + b"\x07" + KEY,
+                "act 7 carries the current key and the new one",
             ),
         ],
     }
