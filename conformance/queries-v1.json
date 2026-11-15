@@ -1,6 +1,6 @@
 {
   "contract_major": 1,
-  "contract_minor": 1,
+  "contract_minor": 2,
   "what_this_is": "Rendering vectors for the query builder contract in spec/query-builder-v1.md. A conforming builder renders each case's `build` to exactly its `script` with exactly its `parameters`, and refuses each case carrying `refused`.",
   "this_is_language_not_protocol": "Section 6 of protocol-v1.md puts the query language outside the protocol. This corpus sits beside the value corpus rather than inside it.",
   "needs_run_first": "A case carrying `needs` names statements that must be executed before it, in order, for it to have anything to act on — an UPDATE needs the record it changes. Offline rendering ignores them; a node run does not.",
@@ -827,6 +827,95 @@
       "refused": {
         "reason": "not-an-answerer",
         "name": "MASTER"
+      }
+    },
+    {
+      "name": "define-table-store-column",
+      "build": {
+        "define_table": {
+          "table": "events",
+          "columns": {
+            "kind": "string",
+            "seq": "int"
+          },
+          "store": "column"
+        }
+      },
+      "note": "The storage kind renders after the columns, in the clause order the engine's own describe writes (§4.11).",
+      "script": "DEFINE TABLE events (kind string, seq int) STORE COLUMN;",
+      "parameters": {}
+    },
+    {
+      "name": "define-table-store-row-is-the-default-said-out-loud",
+      "build": {
+        "define_table": {
+          "table": "events",
+          "columns": {
+            "kind": "string"
+          },
+          "store": "row"
+        }
+      },
+      "script": "DEFINE TABLE events (kind string) STORE ROW;",
+      "parameters": {}
+    },
+    {
+      "name": "define-table-store-column-partitions",
+      "build": {
+        "define_table": {
+          "table": "events",
+          "columns": {
+            "kind": "string",
+            "seq": "int"
+          },
+          "store": "column",
+          "partitions": {
+            "count": 4,
+            "by": "kind"
+          }
+        }
+      },
+      "note": "PARTITIONS follows STORE; the count is a literal, the key a checked name (§4.11).",
+      "script": "DEFINE TABLE events (kind string, seq int) STORE COLUMN PARTITIONS 4 BY kind;",
+      "parameters": {}
+    },
+    {
+      "name": "partitions-without-a-store-clause-is-refused",
+      "build": {
+        "define_table": {
+          "table": "events",
+          "columns": {
+            "kind": "string"
+          },
+          "partitions": {
+            "count": 4,
+            "by": "kind"
+          }
+        }
+      },
+      "note": "Hash partitioning rides only a columnar table; a builder renders the clause only beside store: column (§4.11).",
+      "refused": {
+        "reason": "partitions-without-store"
+      }
+    },
+    {
+      "name": "a-partition-count-below-one-is-refused",
+      "build": {
+        "define_table": {
+          "table": "events",
+          "columns": {
+            "kind": "string"
+          },
+          "store": "column",
+          "partitions": {
+            "count": 0,
+            "by": "kind"
+          }
+        }
+      },
+      "refused": {
+        "reason": "not-a-partition-count",
+        "name": "0"
       }
     }
   ]
