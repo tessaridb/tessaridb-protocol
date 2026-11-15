@@ -899,6 +899,22 @@
       }
     },
     {
+      "name": "a-store-kind-that-is-neither-row-nor-column-is-refused",
+      "build": {
+        "define_table": {
+          "table": "events",
+          "columns": {
+            "kind": "string"
+          },
+          "store": "folder"
+        }
+      },
+      "refused": {
+        "reason": "not-a-store-kind",
+        "name": "folder"
+      }
+    },
+    {
       "name": "a-partition-count-below-one-is-refused",
       "build": {
         "define_table": {

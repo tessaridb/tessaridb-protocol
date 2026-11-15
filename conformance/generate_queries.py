@@ -499,6 +499,10 @@ CASES = [
         "Hash partitioning rides only a columnar table; a builder renders the clause only beside store: column (§4.11).",
     ),
     case(
+        "a-store-kind-that-is-neither-row-nor-column-is-refused",
+        {"define_table": {"table": "events", "columns": {"kind": "string"}, "store": "folder"}},
+    ),
+    case(
         "a-partition-count-below-one-is-refused",
         {"define_table": {"table": "events", "columns": {"kind": "string"}, "store": "column", "partitions": {"count": 0, "by": "kind"}}},
     ),
