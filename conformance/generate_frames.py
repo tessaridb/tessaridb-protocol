@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate the frame conformance corpus: the `Elsewhere` body of protocol §3.12,
 the classed `Refusal` body of §3.6, the `Progress` body of §3.15, and the
-Request body's stream byte of §3.4 with the `Part` frame of §3.16, and the keys
-a Request carries with acts 6 and 7 of the Vault body (§3.4, §3.14, minor 7).
+Request body's stream byte of §3.4 with the `Part` frame of §3.16, the keys
+a Request carries with acts 6 and 7 of the Vault body (§3.4, §3.14, minor 7),
+and the `Link` body's ask and answer of §3.17 (minor 8).
 
 A **second implementation** of that body, written from the specification alone.
 A redirect is the one frame a client must act on rather than report, and an
@@ -180,11 +181,128 @@ def malformed_case(name, body, why):
     return {"name": name, "body_hex": body.hex(), "malformed": why}
 
 
+TOKEN = bytes([0xA5] * 32)
+ORIGIN = bytes(range(16))
+RECORD = bytes(range(24))
+LINE_WRITER = bytes(16)
+
+
+def link_log(variant, namespace=0, database=0, table=0, shard=0, writer=LINE_WRITER):
+    """§3.17: the home variant byte, the u32 namespace and database ids (0 unless
+    named), the u32 table and shard ids only for a shard, then the 16-byte
+    writer."""
+    body = bytes([variant]) + struct.pack(">II", namespace, database)
+    if variant == 3:
+        body += struct.pack(">II", table, shard)
+    return body + writer
+
+
+def link_ask_body(token, namespace, database, origin, log, start, records):
+    """§3.17, the ask: the token and the origin as length-prefixed byte strings
+    of exactly 32 and 16 bytes, the two names, then the envelope — the log, the
+    first position, the count, and each record as its position and
+    length-prefixed bytes."""
+    raw_token = struct.pack(">I", len(token)) + token
+    raw_origin = struct.pack(">I", len(origin)) + origin
+    body = raw_token + text(namespace) + text(database) + raw_origin + log
+    body += struct.pack(">Q", start) + struct.pack(">Q", len(records))
+    for at, record in records:
+        body += struct.pack(">Q", at) + struct.pack(">I", len(record)) + record
+    return body
+
+
+def link_ask_case(name, namespace, database, origin, log, start, records):
+    decoded_log = {"writer_hex": log[-16:].hex()}
+    variant = log[0]
+    namespace_id, database_id = struct.unpack(">II", log[1:9])
+    decoded_log["home"] = {0: "store", 1: "namespace", 2: "database", 3: "shard"}[variant]
+    if variant in (1, 2, 3):
+        decoded_log["namespace"] = str(namespace_id)
+    if variant in (2, 3):
+        decoded_log["database"] = str(database_id)
+    if variant == 3:
+        table_id, shard_id = struct.unpack(">II", log[9:17])
+        decoded_log["table"] = str(table_id)
+        decoded_log["shard"] = str(shard_id)
+    return {
+        "name": name,
+        "body_hex": link_ask_body(TOKEN, namespace, database, origin, log, start, records).hex(),
+        "decoded": {
+            "token_hex": TOKEN.hex(),
+            "namespace": namespace,
+            "database": database,
+            "envelope": {
+                "origin_hex": origin.hex(),
+                "log": decoded_log,
+                "from": str(start),
+                "records": [{"at": str(at), "record_hex": record.hex()} for at, record in records],
+            },
+        },
+    }
+
+
+def link_answer_case(name, confirmed):
+    return {
+        "name": name,
+        "body_hex": struct.pack(">Q", confirmed).hex(),
+        "decoded": {"confirmed": str(confirmed)},
+    }
+
+
+def link_cases():
+    database_log = link_log(2, namespace=7, database=3)
+    batch = link_ask_body(TOKEN, "prod", "shop", ORIGIN, database_log, 41, [(41, RECORD)])
+    return [
+        link_ask_case("one-record-over-a-database-log", "prod", "shop", ORIGIN, database_log, 41, [(41, RECORD)]),
+        link_ask_case(
+            "an-empty-batch-that-advances-the-tail",
+            "prod",
+            "shop",
+            ORIGIN,
+            database_log,
+            43,
+            [],
+        ),
+        link_answer_case("applied-through-fifty-eight", 58),
+        link_answer_case("a-confirmation-above-two-to-the-63", 2**64 - 2),
+        malformed_case(
+            "a-token-of-thirty-one-bytes",
+            link_ask_body(TOKEN[:31], "prod", "shop", ORIGIN, database_log, 41, [(41, RECORD)]),
+            "the token is 32 bytes, and a shorter one is refused",
+        ),
+        malformed_case(
+            "an-origin-of-fifteen-bytes",
+            link_ask_body(TOKEN, "prod", "shop", ORIGIN[:15], database_log, 41, [(41, RECORD)]),
+            "the origin is 16 bytes, and a shorter one is refused",
+        ),
+        malformed_case(
+            "a-home-variant-the-node-does-not-know",
+            link_ask_body(TOKEN, "prod", "shop", ORIGIN, link_log(9), 41, [(41, RECORD)]),
+            "a home variant is 0, 1, 2 or 3, and a record the node cannot place is refused",
+        ),
+        malformed_case(
+            "a-count-promising-a-record-the-body-does-not-hold",
+            batch[:-4],
+            "the count says how many records follow, and the body holds fewer",
+        ),
+        malformed_case(
+            "cut-inside-a-record",
+            batch[:-1],
+            "the record is shorter than its length",
+        ),
+        malformed_case(
+            "an-answer-cut-inside-the-confirmation",
+            struct.pack(">Q", 58)[:5],
+            "the confirmation is a u64, and the body ends inside it",
+        ),
+    ]
+
+
 def build_corpus():
     node = bytes(range(16))
     good = elsewhere_body(node, 7, 1, "b.example:9080")
     return {
-        "protocol_minor": 7,
+        "protocol_minor": 8,
         "what_this_is": (
             "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming "
             "client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` "
@@ -203,7 +321,13 @@ def build_corpus():
             "And from minor 7: each `keyed` case is either a Request body (`decoded.keys` present) "
             "carrying keys after its stream byte, or a Vault body (`decoded.act`) for act 6 or 7 on "
             "one vault; a client encodes `decoded` to exactly `body_hex`, a node decodes `body_hex` "
-            "to exactly `decoded`, and every case carrying `malformed` is refused."
+            "to exactly `decoded`, and every case carrying `malformed` is refused. "
+            "And from minor 8: each `link` case is one `Link` frame (tag 40, §3.17) — an ask "
+            "(`decoded.token_hex` and `decoded.envelope` present) or an answer "
+            "(`decoded.confirmed`); ids and positions are decimal text, byte fields are hex, "
+            "and the record bytes are opaque — they carry the store's own record encoding. "
+            "A client encodes `decoded` to exactly `body_hex`, a node decodes `body_hex` to "
+            "exactly `decoded`, and every case carrying `malformed` is refused."
         ),
         "generated_by": "generate_frames.py",
         "elsewhere": [
@@ -287,6 +411,7 @@ def build_corpus():
                 "act 7 carries the current key and the new one",
             ),
         ],
+        "link": link_cases(),
     }
 
 

@@ -235,6 +235,13 @@ only to a node whose greeting carried `minor >= 7`, and tells its caller the nod
 otherwise, before sending anything. An older node would read past the keys and run the script without them — the
 vault would answer *sealed* for a reason the caller cannot see — or close the connection on the act byte.
 
+`minor = 8` introduces **`Link` (tag 40)** (3.17) — a cross-cluster link's shipment, in the node release after
+`0.47.0`. The shipper asks, so the shipper gates: it offers a link frame only to a node whose greeting carried
+`minor >= 8`, and tells its caller the node cannot answer a link otherwise, before sending anything. An older node
+closes the connection on a kind it does not know, which reads as a network fault rather than as the version gap it
+is. The frame is the only one a client sends that names a log (3.17), which is why it is gated like a new vault act
+and not like `Part`.
+
 ---
 
 ## 3. The wire protocol
@@ -316,8 +323,9 @@ cannot be asked about after the fact by a client of a different build.
 | 17 | Vault | client → node | 3.14 |
 | 37 | Progress | node → client | 3.15 |
 | 38 | Part | node → client | 3.16 |
+| 40 | Link | both | 3.17 |
 
-**Thirteen, seventeen, thirty-seven and thirty-eight, and not six, seven, eight and nine.** Tags 6 through 12, 14 through 16 and 18
+**Thirteen, seventeen, thirty-seven, thirty-eight and forty, and not six, seven, eight and nine.** Tags 6 through 12, 14 through 16 and 18
 through 36 are taken by the link nodes use to talk to each other, which shares this one byte and is not part
 of the client protocol. A client never sends one and never receives one, and a node that
 receives a client frame on a peer connection — or the reverse — treats it as an
@@ -1068,6 +1076,68 @@ request still ends on one of the three frames it always ended on.
   ceiling is a refusal (3.6), class `invalid`, rather than a frame the client would refuse to read.
 
 The node sends parts of 1 MiB; a client must accept any length up to the ceiling.
+
+### 3.17 Link body — a cross-cluster shipment, asked and answered
+
+The ask, client → node:
+
+```
+lenbytes    token — exactly 32 bytes, the link token offered where a credential rides
+text        namespace — the receiving cluster's spelling of it
+text        database — the receiving cluster's spelling: the `AS` name when the
+            link declared one, the same name otherwise
+lenbytes    envelope origin — exactly 16 bytes, the node the batch ships from
+log         envelope log — the log its positions count in (below)
+u64         from — the first position the batch carries
+u64         count — the records that follow
+repeated count times:
+    u64       at — the position the record holds
+    lenbytes  record — one log record, in the store's own record encoding
+```
+
+A token or origin whose length is not exactly its width refuses the frame; the
+length prefix is not a way to smuggle a different size past the check.
+
+The answer, node → client:
+
+```
+u64     confirmed — the position the node has durably applied through
+```
+
+Sent from minor 8, by the driver a cluster's outbound replication link rides. One
+connection carries one ask and its answer — the door's one-request posture, the way a
+greeting-only call goes. The node verifies the token before it applies anything: the
+SHA-256 of the presented bytes against the digest the receiving row carries, and the
+row's expiry. It then applies the envelope through the same idempotent apply a
+follower's collection uses, so a position the node has already applied is a no-op and
+the shipment is at-least-once; it answers the position it has applied through, and the
+source advances its cursor on that answer. A record the receiving copy already holds
+at an applied position is skipped, so a re-shipped batch after an interrupted
+connection lands exactly once.
+
+The refusals, each naming its class (3.6): `unauthenticated` — the row waits on no
+token, the token has expired, or the digest does not match; `invalid` — the cluster
+holds no namespace or database of that name, or the database is not received from
+another cluster; `conflict` — the batch diverges from the log the node holds.
+
+The **log** a batch counts in is named once, after the origin:
+
+```
+u8          home variant — 0 the store, 1 one namespace, 2 one database, 3 one shard
+u32         namespace id — 0 when the variant says the store
+u32         database id — 0 unless the variant names a database or a shard
+u32         table id · u32 shard id — only when the variant says a shard
+fixed(16)   writer — the node allocating positions into the log; sixteen zero bytes
+            are the line log, the one log of a single-leader home
+```
+
+A home-variant byte the node does not know refuses the frame, rather than widening to
+the store: a record filed under a home the node cannot name is a record it cannot
+decide the destination of. The records themselves are opaque here — they carry the
+store's own log-record encoding, and a second codec for the same record is a second
+thing that has to stay true across a version.
+
+Vectors: `conformance/frames-v1.json`, `link`.
 
 ---
 
