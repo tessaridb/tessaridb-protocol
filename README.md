@@ -62,7 +62,7 @@ So the specification comes first and lives on its own:
 | `conformance/consumer-v1.json` | the topic consumer's statements, 14 cases, rendering and refusals |
 | `conformance/queue-v1.json` | the queue worker's statements, 20 cases, rendering and refusals |
 | `conformance/vault-v1.json` | the vault frame's bodies — on the store and on one vault with its own passphrase — and the vault functions' statements, 11 frames and 19 statements |
-| `conformance/frames-v1.json` | the `Elsewhere` (redirect) frame body — 4 decoded and 4 malformed |
+| `conformance/frames-v1.json` | the frame bodies that are not whole conversations — `Elsewhere` (redirect), the classed `Refusal`, `Progress`, the Request's stream byte, keyed requests and vault acts, and the `Link` ask and answer of minor 8 |
 | `conformance/README.md` | how to run the corpora against a client |
 
 ## The version, and what it promises
