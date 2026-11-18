@@ -295,11 +295,39 @@ whatever copy came first.
 authoritative, so the two clauses are separate controls and both may appear on
 one statement — `STALENESS` first.
 
+### 4.11 `DEFINE TABLE`
+
+```
+columns     ::=  "{" name ":" type *( "," name ":" type ) "}"   ; §4.8 order
+store       ::=  "row" / "column"
+partitions  ::=  "{" "count" ":" int, "by" : name "}"
+```
+
+Rendered as `DEFINE TABLE <name> (<columns>)`, then ` STORE <word>` when a
+store is given, then ` PARTITIONS <count> BY <field>` when partitioning is.
+The storage kind is the columnar-projection clause of the engine's grammar
+(tessariql.md §4b): `STORE COLUMN` keeps a columnar projection of the table's
+rows beside their row authority; `STORE ROW` is the default said out loud.
+
+**A definition holds no values.** Every production above names things — the
+table, the columns, the partition field — and the partition count is the
+statement's shape, arriving as an integer for the reason `START` and `LIMIT`
+do. Nothing binds; `parameters` is empty.
+
+**Partitioning rides only a columnar table.** A `partitions` node without
+`store: "column"` is refused `partitions-without-store`, and a count below one
+is refused `not-a-partition-count` — both for the reason §5 gives: the caller
+is here now, and a statement the node would refuse is refused by the builder
+first. The engine refuses the same combinations at execution, named
+(`StorageKindOnKind`, `PartitionCountZero`); the builder's refusal is the
+build-time half of the same contract.
+
 ---
 
 ## 5. Refusals
 
-A builder reports two refusal reasons, and they are the corpus's vocabulary:
+A builder reports its refusals from the vocabulary below, and they are the
+corpus's vocabulary:
 
 | reason | when |
 |---|---|
@@ -307,6 +335,9 @@ A builder reports two refusal reasons, and they are the corpus's vocabulary:
 | `incomplete` | a statement that cannot be rendered at all — a `CREATE` or `UPDATE` with no fields |
 | `not-a-span` | a `STALENESS` bound that is not a span (§4.9) |
 | `not-an-answerer` | an `ANSWERED BY` that is neither `ANY` nor `LEADER` (§4.10) |
+| `not-a-store-kind` | a `store` that is neither `row` nor `column` (§4.11) |
+| `partitions-without-store` | a `partitions` node not beside `store: "column"` (§4.11) |
+| `not-a-partition-count` | a partition count that is not an integer of at least one (§4.11) |
 
 A refusal is returned to the caller. It is never a rendered statement that the
 node will refuse instead, because the caller is here now and the node is not.

@@ -1,6 +1,6 @@
 {
-  "protocol_minor": 7,
-  "what_this_is": "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` (epoch as decimal text, node as hex), and refuses each case carrying `malformed` as a malformed frame rather than reading a meaning into it. And for the Refusal body (tag 3), protocol §3.6 from minor 3: each `refusal` case's `body_hex` reads as its `decoded` class — a word from the table, `unknown` for byte 0, or null when the body carries no class — and message. And for the Progress body (tag 37), protocol §3.15 from minor 4: each `progress` case decodes to its `decoded` sequence (decimal text) and cursor, or is refused as malformed. And for the Request body (tag 1), protocol §3.4 from minor 5: each `request` case is the body a client sends for its `decoded` script and stream flag — the stream byte appears only when set — and a node refuses a stream byte other than 0 or 1. A `Part` (tag 38, §3.16) carries raw snapshot bytes and has no body to vector. And from minor 7: each `keyed` case is either a Request body (`decoded.keys` present) carrying keys after its stream byte, or a Vault body (`decoded.act`) for act 6 or 7 on one vault; a client encodes `decoded` to exactly `body_hex`, a node decodes `body_hex` to exactly `decoded`, and every case carrying `malformed` is refused.",
+  "protocol_minor": 8,
+  "what_this_is": "Vectors for the Elsewhere frame body (tag 13), protocol §3.12. A conforming client decodes each `elsewhere` case's `body_hex` to exactly its `decoded` (epoch as decimal text, node as hex), and refuses each case carrying `malformed` as a malformed frame rather than reading a meaning into it. And for the Refusal body (tag 3), protocol §3.6 from minor 3: each `refusal` case's `body_hex` reads as its `decoded` class — a word from the table, `unknown` for byte 0, or null when the body carries no class — and message. And for the Progress body (tag 37), protocol §3.15 from minor 4: each `progress` case decodes to its `decoded` sequence (decimal text) and cursor, or is refused as malformed. And for the Request body (tag 1), protocol §3.4 from minor 5: each `request` case is the body a client sends for its `decoded` script and stream flag — the stream byte appears only when set — and a node refuses a stream byte other than 0 or 1. A `Part` (tag 38, §3.16) carries raw snapshot bytes and has no body to vector. And from minor 7: each `keyed` case is either a Request body (`decoded.keys` present) carrying keys after its stream byte, or a Vault body (`decoded.act`) for act 6 or 7 on one vault; a client encodes `decoded` to exactly `body_hex`, a node decodes `body_hex` to exactly `decoded`, and every case carrying `malformed` is refused. And from minor 8: each `link` case is one `Link` frame (tag 40, §3.17) — an ask (`decoded.token_hex` and `decoded.envelope` present) or an answer (`decoded.confirmed`); ids and positions are decimal text, byte fields are hex, and the record bytes are opaque — they carry the store's own record encoding. A client encodes `decoded` to exactly `body_hex`, a node decodes `body_hex` to exactly `decoded`, and every case carrying `malformed` is refused.",
   "generated_by": "generate_frames.py",
   "elsewhere": [
     {
@@ -318,6 +318,97 @@
       "name": "change-key-missing-the-new-key",
       "body_hex": "00010000000470726f6400000004776f726b000000047465616d075a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
       "malformed": "act 7 carries the current key and the new one"
+    }
+  ],
+  "link": [
+    {
+      "name": "one-record-over-a-database-log",
+      "body_hex": "00000020a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a50000000470726f640000000473686f7000000010000102030405060708090a0b0c0d0e0f0200000007000000030000000000000000000000000000000000000000000000290000000000000001000000000000002900000018000102030405060708090a0b0c0d0e0f1011121314151617",
+      "decoded": {
+        "token_hex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "namespace": "prod",
+        "database": "shop",
+        "envelope": {
+          "origin_hex": "000102030405060708090a0b0c0d0e0f",
+          "log": {
+            "writer_hex": "00000000000000000000000000000000",
+            "home": "database",
+            "namespace": "7",
+            "database": "3"
+          },
+          "from": "41",
+          "records": [
+            {
+              "at": "41",
+              "record_hex": "000102030405060708090a0b0c0d0e0f1011121314151617"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "an-empty-batch-that-advances-the-tail",
+      "body_hex": "00000020a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a50000000470726f640000000473686f7000000010000102030405060708090a0b0c0d0e0f02000000070000000300000000000000000000000000000000000000000000002b0000000000000000",
+      "decoded": {
+        "token_hex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "namespace": "prod",
+        "database": "shop",
+        "envelope": {
+          "origin_hex": "000102030405060708090a0b0c0d0e0f",
+          "log": {
+            "writer_hex": "00000000000000000000000000000000",
+            "home": "database",
+            "namespace": "7",
+            "database": "3"
+          },
+          "from": "43",
+          "records": []
+        }
+      }
+    },
+    {
+      "name": "applied-through-fifty-eight",
+      "body_hex": "000000000000003a",
+      "decoded": {
+        "confirmed": "58"
+      }
+    },
+    {
+      "name": "a-confirmation-above-two-to-the-63",
+      "body_hex": "fffffffffffffffe",
+      "decoded": {
+        "confirmed": "18446744073709551614"
+      }
+    },
+    {
+      "name": "a-token-of-thirty-one-bytes",
+      "body_hex": "0000001fa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a50000000470726f640000000473686f7000000010000102030405060708090a0b0c0d0e0f0200000007000000030000000000000000000000000000000000000000000000290000000000000001000000000000002900000018000102030405060708090a0b0c0d0e0f1011121314151617",
+      "malformed": "the token is 32 bytes, and a shorter one is refused"
+    },
+    {
+      "name": "an-origin-of-fifteen-bytes",
+      "body_hex": "00000020a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a50000000470726f640000000473686f700000000f000102030405060708090a0b0c0d0e0200000007000000030000000000000000000000000000000000000000000000290000000000000001000000000000002900000018000102030405060708090a0b0c0d0e0f1011121314151617",
+      "malformed": "the origin is 16 bytes, and a shorter one is refused"
+    },
+    {
+      "name": "a-home-variant-the-node-does-not-know",
+      "body_hex": "00000020a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a50000000470726f640000000473686f7000000010000102030405060708090a0b0c0d0e0f0900000000000000000000000000000000000000000000000000000000000000290000000000000001000000000000002900000018000102030405060708090a0b0c0d0e0f1011121314151617",
+      "malformed": "a home variant is 0, 1, 2 or 3, and a record the node cannot place is refused"
+    },
+    {
+      "name": "a-count-promising-a-record-the-body-does-not-hold",
+      "body_hex": "00000020a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a50000000470726f640000000473686f7000000010000102030405060708090a0b0c0d0e0f0200000007000000030000000000000000000000000000000000000000000000290000000000000001000000000000002900000018000102030405060708090a0b0c0d0e0f10111213",
+      "malformed": "the count says how many records follow, and the body holds fewer"
+    },
+    {
+      "name": "cut-inside-a-record",
+      "body_hex": "00000020a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a50000000470726f640000000473686f7000000010000102030405060708090a0b0c0d0e0f0200000007000000030000000000000000000000000000000000000000000000290000000000000001000000000000002900000018000102030405060708090a0b0c0d0e0f10111213141516",
+      "malformed": "the record is shorter than its length"
+    },
+    {
+      "name": "an-answer-cut-inside-the-confirmation",
+      "body_hex": "0000000000",
+      "malformed": "the confirmation is a u64, and the body ends inside it"
     }
   ]
 }

@@ -260,12 +260,49 @@ def render_delete_record(spec, binder):
     return f"DELETE {table}:{identity};"
 
 
+# --- §4.11 DEFINE TABLE --------------------------------------------------------
+
+
+def render_define_table(spec, binder):
+    """§4.11: a table definition the builder can carry — the name, the columns
+    it declares, and the storage layout clause. Definitions name things and
+    hold no values, so nothing binds; the partition count is the statement's
+    shape, like START and LIMIT, and arrives as an integer."""
+    table = checked("a table", spec["table"])
+    columns = spec.get("columns", {})
+    parts = []
+    # §4.8 order: ascending by the names as UTF-8 bytes, as every object body.
+    for name in sorted(columns, key=lambda text: text.encode("utf-8")):
+        checked("a field", name)
+        parts.append(f"{name} {columns[name]}")
+    script = f"DEFINE TABLE {table} (" + ", ".join(parts) + ")"
+
+    store = spec.get("store")
+    if store is not None:
+        if store not in ("row", "column"):
+            raise Refused("not-a-store-kind", name=store)
+        script += f" STORE {store.upper()}"
+
+    partitioning = spec.get("partitions")
+    if partitioning is not None:
+        if store is None:
+            raise Refused("partitions-without-store")
+        count = partitioning["count"]
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            raise Refused("not-a-partition-count", name=str(count))
+        field = checked("a field", partitioning["by"])
+        script += f" PARTITIONS {count} BY {field}"
+
+    return script + ";"
+
+
 STATEMENTS = {
     "select": render_select,
     "create_record": render_create_record,
     "create_in_table": render_create_in_table,
     "update_record": render_update_record,
     "delete_record": render_delete_record,
+    "define_table": render_define_table,
 }
 
 
@@ -441,6 +478,34 @@ CASES = [
     case("a-staleness-that-is-not-a-span-is-refused", {"select": {"from": "memories", "staleness": "1 minute"}}),
     case("a-staleness-with-an-unknown-unit-is-refused", {"select": {"from": "memories", "staleness": "1y"}}),
     case("an-answerer-that-is-not-one-of-the-two-is-refused", {"select": {"from": "memories", "answered_by": "MASTER"}}),
+    # --- §4.11 DEFINE TABLE ---------------------------------------------------
+    case(
+        "define-table-store-column",
+        {"define_table": {"table": "events", "columns": {"kind": "string", "seq": "int"}, "store": "column"}},
+        "The storage kind renders after the columns, in the clause order the engine's own describe writes (§4.11).",
+    ),
+    case(
+        "define-table-store-row-is-the-default-said-out-loud",
+        {"define_table": {"table": "events", "columns": {"kind": "string"}, "store": "row"}},
+    ),
+    case(
+        "define-table-store-column-partitions",
+        {"define_table": {"table": "events", "columns": {"kind": "string", "seq": "int"}, "store": "column", "partitions": {"count": 4, "by": "kind"}}},
+        "PARTITIONS follows STORE; the count is a literal, the key a checked name (§4.11).",
+    ),
+    case(
+        "partitions-without-a-store-clause-is-refused",
+        {"define_table": {"table": "events", "columns": {"kind": "string"}, "partitions": {"count": 4, "by": "kind"}}},
+        "Hash partitioning rides only a columnar table; a builder renders the clause only beside store: column (§4.11).",
+    ),
+    case(
+        "a-store-kind-that-is-neither-row-nor-column-is-refused",
+        {"define_table": {"table": "events", "columns": {"kind": "string"}, "store": "folder"}},
+    ),
+    case(
+        "a-partition-count-below-one-is-refused",
+        {"define_table": {"table": "events", "columns": {"kind": "string"}, "store": "column", "partitions": {"count": 0, "by": "kind"}}},
+    ),
 ]
 
 
@@ -471,7 +536,7 @@ def build_corpus():
 
     return {
         "contract_major": 1,
-        "contract_minor": 1,
+        "contract_minor": 2,
         "what_this_is": (
             "Rendering vectors for the query builder contract in spec/query-builder-v1.md. "
             "A conforming builder renders each case's `build` to exactly its `script` with "
