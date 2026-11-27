@@ -382,8 +382,8 @@ CASES = [
     ("regex-with-a-backslash", "A backslash is an ordinary byte to the codec.", {"regex": "\\d{3}-\\d{4}"}),
     ("regex-empty", "Empty is a pattern; whether it is a useful one is the store's opinion, not the codec's.", {"regex": ""}),
     ("regex-unicode", "Length is in bytes, as everywhere else.", {"regex": "привет+"}),
-    ("fold-state-sum", "A count and a running total — the shape a distributive fold's accumulator holds.", {"fold_state": {"fold": "sum", "state": {"array": [{"integer": 3}, {"integer": 42}]}}}),
-    ("fold-state-count", "A count's state is its one integer.", {"fold_state": {"fold": "count", "state": {"integer": 7}}}),
+    ("fold-state-sum", "A count and a running total — the shape a distributive fold's accumulator holds.", {"fold_state": {"fold": "sum", "state": {"array": [{"integer": "3"}, {"integer": "42"}]}}}),
+    ("fold-state-count", "A count's state is its one integer.", {"fold_state": {"fold": "count", "state": {"integer": "7"}}}),
     ("fold-state-empty", "A state that holds nothing yet is a state of its fold all the same.", {"fold_state": {"fold": "sum", "state": {"none": None}}}),
 ]
 

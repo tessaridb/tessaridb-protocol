@@ -673,10 +673,10 @@
           "state": {
             "array": [
               {
-                "integer": 3
+                "integer": "3"
               },
               {
-                "integer": 42
+                "integer": "42"
               }
             ]
           }
