@@ -727,10 +727,10 @@
           "state": {
             "array": [
               {
-                "integer": 3
+                "integer": "3"
               },
               {
-                "integer": 42
+                "integer": "42"
               }
             ]
           }
@@ -745,7 +745,7 @@
         "fold_state": {
           "fold": "count",
           "state": {
-            "integer": 7
+            "integer": "7"
           }
         }
       },
