@@ -1172,6 +1172,7 @@ data already written carries them.
 | `0x0f` | set | `u32` count · that many values, recursively |
 | `0x10` | geometry | 4.6 |
 | `0x11` | regex | `lenbytes`, UTF-8 — the pattern as written, uncompiled |
+| `0x12` | fold_state | `lenbytes` fold name (UTF-8) · the state, one value recursively |
 
 **An unknown type tag is an error, never a guess.** A codec that infers the type
 from what follows reads a newer format as a plausible wrong value, and nothing

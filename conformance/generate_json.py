@@ -292,6 +292,15 @@ def spell(value, names):
         # The pattern's source. The server does not execute it and a client must
         # not compile it and present the result as this store's semantics.
         return payload
+    if kind == "fold_state":
+        # `{"$fold_state": name, "state": …}` — JSON has no literal for a
+        # fold's state, so the shape says what it is; a state of `none`
+        # spells as null here, the one position where none is not omitted.
+        rendered = spell(payload["state"], names)
+        return {
+            "$fold_state": payload["fold"],
+            "state": None if rendered is OMITTED else rendered,
+        }
     raise Silence(f"§5.7 has no row for value kind {kind}")
 
 
@@ -471,6 +480,8 @@ VALUE_CASES = [
     ("geometry-line-empty", "Permitted by the codec; a decoder must not refuse it.", {"geometry": {"line": []}}),
     ("regex-is-carried-not-compiled", "A client MUST NOT compile it.", {"regex": "^a.*z$"}),
     ("regex-with-a-backslash", None, {"regex": "\\d+\\s"}),
+    ("fold-state-is-structural", "JSON has no literal for a fold's state, so the shape says what it is.", {"fold_state": {"fold": "sum", "state": {"array": [{"integer": 3}, {"integer": 42}]}}}),
+    ("fold-state-of-none-is-null", "The one position where none spells as null rather than being omitted.", {"fold_state": {"fold": "sum", "state": {"none": None}}}),
     # --- Deliberately included to reach a silence -----------------------------
     # These are values the store holds and the document does not say how to
     # write. Leaving them out of the case list would have made the corpus look

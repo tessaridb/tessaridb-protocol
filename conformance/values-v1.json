@@ -718,6 +718,52 @@
       },
       "bytes": "110000000dd0bfd180d0b8d0b2d0b5d1822b",
       "note": "Length is in bytes, as everywhere else."
+    },
+    {
+      "name": "fold-state-sum",
+      "value": {
+        "fold_state": {
+          "fold": "sum",
+          "state": {
+            "array": [
+              {
+                "integer": 3
+              },
+              {
+                "integer": 42
+              }
+            ]
+          }
+        }
+      },
+      "bytes": "120000000373756d0c00000002040180000000000000030401800000000000002a",
+      "note": "A count and a running total — the shape a distributive fold's accumulator holds."
+    },
+    {
+      "name": "fold-state-count",
+      "value": {
+        "fold_state": {
+          "fold": "count",
+          "state": {
+            "integer": 7
+          }
+        }
+      },
+      "bytes": "1200000005636f756e7404018000000000000007",
+      "note": "A count's state is its one integer."
+    },
+    {
+      "name": "fold-state-empty",
+      "value": {
+        "fold_state": {
+          "fold": "sum",
+          "state": {
+            "none": null
+          }
+        }
+      },
+      "bytes": "120000000373756d01",
+      "note": "A state that holds nothing yet is a state of its fold all the same."
     }
   ]
 }

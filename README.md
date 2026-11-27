@@ -56,7 +56,7 @@ So the specification comes first and lives on its own:
 | `spec/cache-v1.md` | the contract for a space used as a cache, a counter and a lock, and for a list, a hash, a set or a ranking under a key — the statements each call sends, `getOrSet`, the lease; **language, not protocol** |
 | `spec/vault-v1.md` | the contract for a client's vault functions — status, unseal, seal, change the passphrase — of the store or of one vault with its own — over the vault frame or routes; list, reveal, write, recipients and audit as statements; where a passphrase may never appear |
 | `conformance/` | executable test vectors every client is checked against |
-| `conformance/values-v1.json` | the value codec, 54 vectors, both directions |
+| `conformance/values-v1.json` | the value codec, 57 vectors, both directions |
 | `conformance/queries-v1.json` | the query builder, 43 cases, rendering and refusals |
 | `conformance/json-v1.json` | the `POST /script` answer, 59 cases, decode only |
 | `conformance/consumer-v1.json` | the topic consumer's statements, 14 cases, rendering and refusals |

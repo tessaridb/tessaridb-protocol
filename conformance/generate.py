@@ -41,6 +41,7 @@ TAG_RANGE = 0x0E
 TAG_SET = 0x0F
 TAG_GEOMETRY = 0x10
 TAG_REGEX = 0x11
+TAG_FOLD_STATE = 0x12
 
 # --- §4.6 geometry shape kinds ------------------------------------------------
 SHAPE_POINT = 0x01
@@ -187,6 +188,15 @@ def encode(value: dict) -> bytes:
         # compiled in a client either — dialects disagree about what is valid,
         # so a validating client rejects patterns the node would have accepted.
         return bytes([TAG_REGEX]) + put_lenbytes(held.encode("utf-8"))
+    if kind == "fold_state":
+        # The fold's name, then the state as one nested value. A state names
+        # its fold so a merge offered another fold's state can refuse rather
+        # than mis-add — the name is part of the value, not metadata.
+        return (
+            bytes([TAG_FOLD_STATE])
+            + put_lenbytes(held["fold"].encode("utf-8"))
+            + encode(held["state"])
+        )
     raise ValueError(f"no such value kind: {kind}")
 
 
@@ -372,6 +382,9 @@ CASES = [
     ("regex-with-a-backslash", "A backslash is an ordinary byte to the codec.", {"regex": "\\d{3}-\\d{4}"}),
     ("regex-empty", "Empty is a pattern; whether it is a useful one is the store's opinion, not the codec's.", {"regex": ""}),
     ("regex-unicode", "Length is in bytes, as everywhere else.", {"regex": "привет+"}),
+    ("fold-state-sum", "A count and a running total — the shape a distributive fold's accumulator holds.", {"fold_state": {"fold": "sum", "state": {"array": [{"integer": 3}, {"integer": 42}]}}}),
+    ("fold-state-count", "A count's state is its one integer.", {"fold_state": {"fold": "count", "state": {"integer": 7}}}),
+    ("fold-state-empty", "A state that holds nothing yet is a state of its fold all the same.", {"fold_state": {"fold": "sum", "state": {"none": None}}}),
 ]
 
 
