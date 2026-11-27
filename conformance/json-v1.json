@@ -666,6 +666,48 @@
       "json": "\\d+\\s"
     },
     {
+      "name": "fold-state-is-structural",
+      "value": {
+        "fold_state": {
+          "fold": "sum",
+          "state": {
+            "array": [
+              {
+                "integer": 3
+              },
+              {
+                "integer": 42
+              }
+            ]
+          }
+        }
+      },
+      "json": {
+        "$fold_state": "sum",
+        "state": [
+          3,
+          42
+        ]
+      },
+      "note": "JSON has no literal for a fold's state, so the shape says what it is."
+    },
+    {
+      "name": "fold-state-of-none-is-null",
+      "value": {
+        "fold_state": {
+          "fold": "sum",
+          "state": {
+            "none": null
+          }
+        }
+      },
+      "json": {
+        "$fold_state": "sum",
+        "state": null
+      },
+      "note": "The one position where none spells as null rather than being omitted."
+    },
+    {
       "name": "float-negative-zero",
       "value": {
         "float_bits": "8000000000000000"
